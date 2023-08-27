@@ -58,9 +58,11 @@ class UnknownPayloadDict(BasePayloadDict):
 
 
 PayloadDict = Union[
-    ResponsePayloadDict, RequestPayloadDict,
-    CommandPayloadDict, EventPayloadDict,
-    UnknownPayloadDict
+    ResponsePayloadDict,
+    RequestPayloadDict,
+    CommandPayloadDict,
+    EventPayloadDict,
+    UnknownPayloadDict,
 ]
 
 
@@ -209,7 +211,6 @@ class NuropbInterface(ABC):
         context: Dict[str, Any],
         ttl: Optional[int] = None,
         trace_id: Optional[str] = None,
-
     ) -> None:
         """publish_event: publishes an event to the transport layer. the event sender should not have
         any open transaction that is waiting for a response from this message. It is up to the

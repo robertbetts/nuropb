@@ -485,7 +485,9 @@ class RMQTransport:
         logger.info("Connection opened - now opening channel")
         self.open_channel()
 
-    def on_connection_open_error(self, _connection: AsyncioConnection, err: Exception) -> None:
+    def on_connection_open_error(
+        self, _connection: AsyncioConnection, err: Exception
+    ) -> None:
         """This method is called by pika if the connection to RabbitMQ
         can't be established.
 
@@ -497,7 +499,9 @@ class RMQTransport:
         if self._connected_future is not None and not self._connected_future.done():
             self._connected_future.set_exception(err)
 
-    def on_connection_closed(self, _connection: AsyncioConnection, reason: Exception) -> None:
+    def on_connection_closed(
+        self, _connection: AsyncioConnection, reason: Exception
+    ) -> None:
         """This method is invoked by pika when the connection to RabbitMQ is
         closed unexpectedly. Since it is unexpected, we will reconnect to
         RabbitMQ if it disconnects.
@@ -598,7 +602,9 @@ Check that the following exchanges, queues and bindings exist:
             queue=self._response_queue, callback=cb, **response_queue_config
         )
 
-    def on_response_queue_declareok(self, frame: pika.frame.Method, userdata: str) -> None:
+    def on_response_queue_declareok(
+        self, frame: pika.frame.Method, userdata: str
+    ) -> None:
         """Method invoked by pika when the Queue.Declare RPC call made in setup_response_queue has
         completed. In this method we will bind request queue and the response queues. When this
         command is complete, the on_bindok method will be invoked by pika.
@@ -698,7 +704,9 @@ Check that the following exchanges, queues and bindings exist:
         self._channel.add_on_cancel_callback(self.on_consumer_cancelled)
 
         # Start consuming the response queue
-        logger.info("Consuming Responses, these need their own handler as the ack type is automatic")
+        logger.info(
+            "Consuming Responses, these need their own handler as the ack type is automatic"
+        )
         self._consumer_tags.add(
             self._channel.basic_consume(
                 on_message_callback=functools.partial(
@@ -760,12 +768,13 @@ Check that the following exchanges, queues and bindings exist:
         )
 
     def on_service_message(
-            self,
-            queue_name: str,
-            channel: Channel,
-            basic_deliver: pika.spec.Basic.Deliver,
-            properties: pika.spec.BasicProperties,
-            body: bytes) -> None:
+        self,
+        queue_name: str,
+        channel: Channel,
+        basic_deliver: pika.spec.Basic.Deliver,
+        properties: pika.spec.BasicProperties,
+        body: bytes,
+    ) -> None:
         """Invoked when a message is delivered to the request_queue. The channel is passed for your convenience.
         The basic_deliver object that is passed in carries the exchange, routing key, delivery tag and a
         redelivered flag for the message. The properties passed in is an instance of BasicProperties with the
@@ -811,16 +820,17 @@ Check that the following exchanges, queues and bindings exist:
                 )
             )
             logger.exception("")
-            if not (properties.headers.get("nuropb_type", "") == "request" and properties.reply_to):
-                """ If the message is not a request or replyable, then we can just reject the message and move on
-                """
+            if not (
+                properties.headers.get("nuropb_type", "") == "request"
+                and properties.reply_to
+            ):
+                """If the message is not a request or replyable, then we can just reject the message and move on"""
                 logger.warning("Rejecting message")
                 self._channel.basic_reject(
                     delivery_tag=basic_deliver.delivery_tag, requeue=False
                 )
             else:
-                """ Send an error response to the requestor, with information on the decoding error
-                """
+                """Send an error response to the requestor, with information on the decoding error"""
                 error_response: ResponsePayloadDict = {
                     "tag": "response",
                     "correlation_id": properties.correlation_id,
@@ -851,38 +861,37 @@ Check that the following exchanges, queues and bindings exist:
                 )
 
         try:
-            """ If the message is a request, then we need to send a response the message ack must only 
+            """If the message is a request, then we need to send a response the message ack must only
             take place after _message_callback has been successfully compelted
             """
             self._message_callback(message)
         except Exception as err:
             logger.error(
                 (
-                f"Error processing service message # {basic_deliver.delivery_tag}: {err}\n"
-                f"correlation_id: {properties.correlation_id}\n"
-                f"trace_id: {properties.headers.get('trace_id', '')}\n"
+                    f"Error processing service message # {basic_deliver.delivery_tag}: {err}\n"
+                    f"correlation_id: {properties.correlation_id}\n"
+                    f"trace_id: {properties.headers.get('trace_id', '')}\n"
                 )
             )
             logger.exception("")
             if message["tag"] == "request":
-                """ nack the message and requeue it, there was a problem with this instance processing the message 
-                """
+                """nack the message and requeue it, there was a problem with this instance processing the message"""
                 logger.warning("Nacking message")
                 self._channel.basic_nack(
                     delivery_tag=basic_deliver.delivery_tag, requeue=True
                 )
                 return
             else:
-                """ If the message is not a request, then we can just reject the message and move on
-                """
+                """If the message is not a request, then we can just reject the message and move on"""
                 logger.warning("Rejecting message")
                 self._channel.basic_reject(
                     delivery_tag=basic_deliver.delivery_tag, requeue=False
                 )
                 return
 
-
-        logger.debug("Acknowledging service message receipt %s", basic_deliver.delivery_tag)
+        logger.debug(
+            "Acknowledging service message receipt %s", basic_deliver.delivery_tag
+        )
         if self._channel is None:
             # TODO: Handle the case for this logic cleanly, is there a retry mechanism possilbe
             #  after re-establishing a new channel?
@@ -955,7 +964,7 @@ Check that the following exchanges, queues and bindings exist:
                 logger.info("Consumer %s closed ok", frame.method.consumer_tag)
                 self._consumer_tags.remove(frame.method.consumer_tag)
                 if len(self._consumer_tags) == 0:
-                    all_consumers_closed.set_result(True) # type: ignore[attr-defined]
+                    all_consumers_closed.set_result(True)  # type: ignore[attr-defined]
 
             for consumer_tag in self._consumer_tags:
                 if self._channel:

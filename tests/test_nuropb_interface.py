@@ -1,8 +1,8 @@
-from typing import Dict, Any, Optional, Callable, Type, List, Tuple, Union, Literal
+from typing import Dict, Any, Optional
 from uuid import uuid4
 import pytest  # type: ignore
 
-from nuropb.interface import NuropbInterface, NuropbMessageError, ResponsePayloadDict
+from nuropb.interface import NuropbInterface, ResponsePayloadDict
 
 
 class TestTransport:

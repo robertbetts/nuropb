@@ -20,7 +20,7 @@ from nuropb.interface import (
     CommandPayloadDict,
     UnknownPayloadDict,
     PayloadSerializeType,
-    NuropbMessageType
+    NuropbMessageType,
 )
 from nuropb.rmq_transport import RMQTransport, encode_payload
 
@@ -131,7 +131,8 @@ class RMQAPI(NuropbInterface):
             logger.debug("Received response: %s", message["correlation_id"])
             if message["correlation_id"] not in self._response_futures:
                 logger.warning(
-                    "Received an unpaired response, ignoring %s", message["correlation_id"]
+                    "Received an unpaired response, ignoring %s",
+                    message["correlation_id"],
                 )
                 return
             response_future = self._response_futures.pop(message["correlation_id"])
@@ -141,7 +142,9 @@ class RMQAPI(NuropbInterface):
             logger.debug("Received event: %s", message["topic"])
 
         elif message["tag"] == "command":
-            logger.debug("Received command: %s.%s", message["service"], message["method"])
+            logger.debug(
+                "Received command: %s.%s", message["service"], message["method"]
+            )
 
     async def request(
         self,
@@ -243,7 +246,6 @@ class RMQAPI(NuropbInterface):
             mandatory=True,
         )
 
-
         try:
             response: PayloadDict = await response_future
         except Exception as err:
@@ -263,7 +265,9 @@ class RMQAPI(NuropbInterface):
         if not rpc_response:
             return response
         elif response["error"]:
-            raise NuropbMessageError(f"RPC service error: {response['error']}", response)
+            raise NuropbMessageError(
+                f"RPC service error: {response['error']}", response
+            )
         else:
             return response["result"]
 
@@ -321,7 +325,7 @@ class RMQAPI(NuropbInterface):
             "trace_id": trace_id,
             "correlation_id": correlation_id,
         }
-        body = encode_payload(message,"json")
+        body = encode_payload(message, "json")
         routing_key = topic
         logger.debug(
             "Sending event message: (%s - %s) (%s - %s)",
@@ -336,4 +340,3 @@ class RMQAPI(NuropbInterface):
             properties=properties,
             mandatory=True,
         )
-

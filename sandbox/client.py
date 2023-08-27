@@ -4,7 +4,6 @@ import asyncio
 from uuid import uuid4
 
 from nuropb.rmq_api import RMQAPI
-from nuropb.rmq_transport import configure_rmq
 
 logger = logging.getLogger()
 
@@ -56,7 +55,7 @@ async def main(ioloop: asyncio.AbstractEventLoop):
         tasks = [ioloop.create_task(make_request(api)) for _ in range(sample_size)]
 
         logging.info("Waiting for tasks to complete")
-        test_result = await asyncio.wait(tasks)
+        await asyncio.wait(tasks)
 
         end_time = datetime.datetime.utcnow()
         time_taken = end_time - start_time
