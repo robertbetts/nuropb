@@ -1,26 +1,15 @@
-from typing import Dict, Optional, Any, Union, Iterable, Tuple, List, Awaitable, Set
+from typing import Dict, Optional, Any, Union, List, Awaitable, Set
 from uuid import uuid4
 import logging
-import json
-from datetime import datetime
 from asyncio import Future
-
-import pika.spec
-from pika.spec import BasicProperties
 
 from nuropb.interface import (
     NuropbInterface,
     NuropbMessageError,
-    MessageCallbackType,
-    ConnectionCallbackType,
     PayloadDict,
     ResponsePayloadDict,
     RequestPayloadDict,
     EventPayloadDict,
-    CommandPayloadDict,
-    UnknownPayloadDict,
-    PayloadSerializeType,
-    NuropbMessageType,
 )
 from nuropb.rmq_transport import RMQTransport, encode_payload
 
@@ -28,51 +17,57 @@ logger = logging.getLogger()
 
 
 class RMQAPI(NuropbInterface):
+    """RMQAPI: A NuropbInterface implementation that uses RabbitMQ as the underlying transport.
+    """
     _response_futures: Dict[str, Any]
     _transport: RMQTransport
     _rpc_exchange: str
     _events_exchange: str
     _default_ttl: int
+    _client_only: bool
 
     def __init__(
         self,
         service_name: str,
         instance_id: str,
         amqp_url: str,
+        client_only: bool = False,
         rpc_exchange: Optional[str] = None,
         events_exchange: Optional[str] = None,
-        dl_exchange: Optional[str] = None,
-        dl_queue: Optional[str] = None,
-        request_queue: Optional[str] = None,
-        response_queue: Optional[str] = None,
-        rpc_bindings: Optional[List[str] | Set[str]] = None,
-        event_bindings: Optional[List[str] | Set[str]] = None,
-        prefetch_count: Optional[int] = None,
-        default_ttl: Optional[int] = None,
+        # dl_exchange: Optional[str] = None,
+        # dl_queue: Optional[str] = None,
+        # request_queue: Optional[str] = None,
+        # response_queue: Optional[str] = None,
+        # rpc_bindings: Optional[List[str] | Set[str]] = None,
+        # event_bindings: Optional[List[str] | Set[str]] = None,
+        # prefetch_count: Optional[int] = None,
+        # default_ttl: Optional[int] = None,
+        transport_settings: Optional[Dict[str, Any]] = None,
     ):
+        """RMQAPI: A NuropbInterface implementation that uses RabbitMQ as the underlying transport.
+        """
+        transport_settings = {} if transport_settings is None else transport_settings
+        default_ttl = transport_settings.get("default_ttl", None)
+
         self._response_futures = {}
         self._default_ttl = 60 * 60 * 1000 if default_ttl is None else default_ttl
+        self._client_only = client_only
 
-        transport_settings: Dict[str, Any] = dict(
-            service_name=service_name,
-            instance_id=instance_id,
-            amqp_url=amqp_url,
-            message_callback=self.receive_transport_message,
-            rpc_exchange=rpc_exchange,
-            events_exchange=events_exchange,
-            dl_exchange=dl_exchange,
-            dl_queue=dl_queue,
-            request_queue=request_queue,
-            response_queue=response_queue,
-            rpc_bindings=rpc_bindings,
-            event_bindings=event_bindings,
-            prefetch_count=prefetch_count,
-            default_ttl=self._default_ttl,
-        )
+        transport_settings.update({
+            "service_name": service_name,
+            "instance_id": instance_id,
+            "amqp_url": amqp_url,
+            "message_callback": self.receive_transport_message,
+            "rpc_exchange": rpc_exchange,
+            "events_exchange": events_exchange,
+        })
         self._transport = RMQTransport(**transport_settings)
-
         self._rpc_exchange = self._transport.rpc_exchange
         self._events_exchange = self._transport.events_exchange
+
+    @property
+    def is_leader(self) -> bool:
+        return self._transport.is_leader
 
     @property
     def connected(self) -> bool:
@@ -112,6 +107,7 @@ class RMQAPI(NuropbInterface):
                 "trace_id": message["trace_id"],
                 "result": f"response from {message['service']}.{message['method']}",
                 "error": None,
+                "warning": None,
             }
             body = encode_payload(response_message, "json")
             routing_key = message["reply_to"]
@@ -179,10 +175,10 @@ class RMQAPI(NuropbInterface):
 
         context: dict
             The context of the request. This is used to pass information to the service manager
-            and is not used by the transport.
+            and is not used by the transport. Example content includes:
                 - user_id: str  # a unique user identifier or token of the user that made the request
-                - correlation_id: str  # a unique identifier of the request used to correlate the response to the request
-                                       # or trace the request over the network (e.g. a uuid4 hex string)
+                - correlation_id: str  # a unique identifier of the request used to correlate the response to the
+                                       # request or trace the request over the network (e.g. a uuid4 hex string)
                 - service: str
                 - method: str
 
@@ -194,7 +190,9 @@ class RMQAPI(NuropbInterface):
             an identifier to trace the request over the network (e.g. a uuid4 hex string)
 
         rpc_response: bool optional
-            If True, then the remote rpc response is returned, else a ResponsePayloadDict is returned
+            if True (default), the actual response of the RPC call is returned and where there was an error
+            during the lifecycle, this is raised as an exception.
+            Where rpc_response is a ResponsePayloadDict, is returned.
 
         Returns:
         --------
@@ -245,33 +243,44 @@ class RMQAPI(NuropbInterface):
             properties=properties,
             mandatory=True,
         )
-
+        response: PayloadDict | None = None
         try:
-            response: PayloadDict = await response_future
+            response = await response_future
         except Exception as err:
             error_message = (
                 f"Error while waiting for response to complete."
                 f"correlation_id: {correlation_id}, trace_id: {trace_id}, error:{err}"
             )
             logger.exception(error_message)
-            raise NuropbMessageError(error_message, response)
+            raise NuropbMessageError(
+                message=error_message,
+                lifecycle="client-handle",
+                payload=response,
+                exception=err,
+            )
 
         if response["tag"] != "response":
             """This logic condition is prevented in the transport layer"""
             raise NuropbMessageError(
-                f"Unexpected response message type: {response['tag']}", response
+                message=f"Unexpected response message type: {response['tag']}",
+                lifecycle="client-handle",
+                payload=response,
+                exception=None,
             )
 
         if not rpc_response:
             return response
         elif response["error"]:
             raise NuropbMessageError(
-                f"RPC service error: {response['error']}", response
+                message=f"RPC service error: {response['error']}",
+                lifecycle="client-handle",
+                payload=response,
+                exception=None,
             )
         else:
             return response["result"]
 
-    async def publish_event(
+    def publish_event(
         self,
         topic: str,
         event: Dict[str, Any],

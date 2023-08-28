@@ -2,8 +2,7 @@ import json
 import logging
 import functools
 import re
-from typing import List, Set, Optional, Any, Tuple, Dict, Awaitable, Callable, cast
-from contextlib import contextmanager
+from typing import List, Set, Optional, Any, Dict, Awaitable
 import asyncio
 
 import pika
@@ -13,14 +12,9 @@ from pika.exceptions import ChannelClosedByBroker
 import pika.spec
 
 from nuropb.interface import (
-    ConnectionCallbackType,
     MessageCallbackType,
     PayloadDict,
-    RequestPayloadDict,
-    ResponsePayloadDict,
-    CommandPayloadDict,
-    EventPayloadDict,
-    UnknownPayloadDict,
+    ResponsePayloadDict, NuropbTransportError,
 )
 
 logger = logging.getLogger()
@@ -34,112 +28,6 @@ def obfuscate_secret(input_string: str) -> str:
         pattern, lambda match: ":" + "x" * (len(match.group(0)) - 2) + "@", input_string
     )
     return result
-
-
-@contextmanager
-def blocking_rabbitmq_channel(rmq_url: str) -> pika.channel.Channel:
-    """Useful for initialisation of queues / exchanges."""
-    connection = None
-    try:
-        parameters = pika.URLParameters(rmq_url)
-        connection = pika.BlockingConnection(parameters)
-        channel = connection.channel()
-        yield channel
-    except Exception as e:
-        logger.error(
-            "Error opening blocking connection to open rabbitmq channel: %s", e
-        )
-        raise
-    finally:
-        if connection is not None:
-            connection.close()
-
-
-def configure_rmq(
-    rmq_url: str,
-    events_exchange: str,
-    rpc_exchange: str,
-    dl_exchange: str,
-    dl_queue: str,
-    request_queue: str,
-    response_queue: str,
-    rpc_bindings: List[str],
-    event_bindings: List[str],
-) -> bool:
-    """Configure the RabbitMQ broker for this transport.
-
-    Calls to this function are idempotent, except for previously named exchanges, queues,
-    and declared bindings all of which will not be removed. These will have to be manually
-    removed from the broker.
-
-    The response queue is not durable, and is auto-deleted when the connection is closed.
-    This is because the response queue is only used for RPC responses, and we don't want
-    to keep stale responses around.
-
-    :param str rmq_url: The URL of the RabbitMQ broker
-    :param str events_exchange: The name of the events exchange
-    :param str rpc_exchange: The name of the RPC exchange
-    :param str dl_exchange: The name of the dead letter exchange
-    :param str dl_queue: The name of the dead letter queue
-    :param str request_queue: The name of the requests queue
-    :param str response_queue: The name of the responses queue
-    :param List[str] rpc_bindings: The list of RPC bindings
-    :param List[str] event_bindings: The list of events bindings
-    :return: True if the RabbitMQ broker was configured successfully
-    """
-    rabbitmq_configured: bool = False
-
-    with blocking_rabbitmq_channel(rmq_url) as channel:
-        channel.exchange_declare(
-            exchange=events_exchange,
-            exchange_type="topic",
-            durable=True,
-        )
-
-        channel.exchange_declare(
-            exchange=rpc_exchange,
-            exchange_type="direct",
-            durable=True,
-        )
-
-        """ Setting up dead letter handling - all requests are automatically sent to a dead letter queue."""
-        channel.exchange_declare(
-            exchange=dl_exchange,
-            exchange_type="fanout",
-            durable=True,
-        )
-
-        channel.queue_declare(queue=dl_queue)
-        channel.queue_bind(dl_queue, dl_exchange)
-
-        # Declare the request queue for this transport
-        requests_queue_config = {
-            "durable": True,
-            "auto_delete": False,
-            "arguments": {"x-dead-letter-exchange": dl_exchange},
-        }
-        channel.queue_declare(queue=request_queue, **requests_queue_config)
-
-        """ The response queue is not durable, and is auto-deleted when the connection is 
-        closed.This is because the response queue is only used for RPC responses, and we 
-        don't want to keep stale responses around.
-        """
-        responses_queue_config = {"durable": False, "auto_delete": True}
-        channel.queue_declare(queue=response_queue, **responses_queue_config)
-
-        for routing_key in rpc_bindings:
-            logger.info("binding to {}".format(routing_key))
-            channel.queue_bind(request_queue, rpc_exchange, routing_key)
-
-        """ New event bindings will be registered here, however, previous bindings will not be removed
-        """
-        for routing_key in event_bindings:
-            logger.info("binding to {}".format(routing_key))
-            channel.queue_bind(request_queue, events_exchange, routing_key)
-
-        rabbitmq_configured = True
-
-    return rabbitmq_configured
 
 
 def encode_payload(payload: PayloadDict, payload_type: str = "json") -> bytes:
@@ -172,13 +60,11 @@ def decode_payload(payload: bytes, payload_type: str = "json") -> Dict[str, Any]
 
 
 def decode_rmq_message(
-    method: pika.spec.Basic.Deliver, properties: pika.spec.BasicProperties, body: bytes
+    _method: pika.spec.Basic.Deliver, properties: pika.spec.BasicProperties, body: bytes
 ) -> PayloadDict:
     """Map incoming RabbitMQ message to a nuropb message types"""
     message_type = properties.headers.get("nuropb_type")
     trace_id = properties.headers.get("trace_id")
-    route = method.routing_key
-    rmq_correlation_id = properties.correlation_id
     payload: Dict[str, Any] = decode_payload(body, "json")
 
     if trace_id != payload.get("trace_id"):
@@ -206,6 +92,7 @@ def decode_rmq_message(
             "trace_id": trace_id,
             "result": payload["result"],
             "error": payload["error"],
+            "warning": payload["warning"],
         }
     elif message_type == "event":
         message_inputs = {
@@ -307,7 +194,7 @@ class RMQTransport:
         prefetch_count: Optional[int] = None,
         default_ttl: Optional[int] = None,
         client_only: Optional[bool] = None,
-    ):
+    ):  # NOSONAR
         """Create a new instance of the consumer class, passing in the AMQP
         URL used to connect to RabbitMQ.
 
@@ -367,6 +254,18 @@ class RMQTransport:
         self._response_futures = {}
         self._connected_future = None
         self._disconnected_future = None
+
+    @property
+    def service_name(self) -> str:
+        return self._service_name
+
+    @property
+    def instance_id(self) -> str:
+        return self._instance_id
+
+    @property
+    def is_leader(self) -> bool:
+        return self._is_leader
 
     @property
     def connected(self) -> bool:
@@ -769,8 +668,8 @@ Check that the following exchanges, queues and bindings exist:
 
     def on_service_message(
         self,
-        queue_name: str,
-        channel: Channel,
+        _queue_name: str,
+        _channel: Channel,
         basic_deliver: pika.spec.Basic.Deliver,
         properties: pika.spec.BasicProperties,
         body: bytes,
@@ -791,7 +690,7 @@ Check that the following exchanges, queues and bindings exist:
         # TODO we need to think about eccesive errors and decide on a strategy for for shutting down the service
         # instance
 
-        :param str queue_name: The name of the queue that the message was received on
+        :param str _queue_name: The name of the queue that the message was received on
         :param pika.channel.Channel _channel: The channel object
         :param pika.spec.Basic.Deliver basic_deliver: basic_deliver method
         :param pika.spec.BasicProperties properties: properties
@@ -806,11 +705,11 @@ Check that the following exchanges, queues and bindings exist:
             f"content_type: {properties.content_type}\n"
             f"body: {body!r}\n"
         )
-
+        message: PayloadDict | None = None
         try:
             message = decode_rmq_message(basic_deliver, properties, body)
         except Exception as err:
-            logger.error(
+            logger.exception(
                 (
                     f"Error decoding service message # {basic_deliver.delivery_tag}: {err}\n"
                     f"Error: {err}\n"
@@ -819,16 +718,23 @@ Check that the following exchanges, queues and bindings exist:
                     f"trace_id: {properties.headers.get('trace_id', '')}\n"
                 )
             )
-            logger.exception("")
             if not (
                 properties.headers.get("nuropb_type", "") == "request"
                 and properties.reply_to
             ):
-                """If the message is not a request or replyable, then we can just reject the message and move on"""
+                """If the message is not a request or replay-able, then we can just reject the message and move on"""
                 logger.warning("Rejecting message")
+                if self._channel is None:
+                    raise NuropbTransportError(
+                        message="unable to reject message due to handling error, RMQ channel closed",
+                        lifecycle="service-decode",
+                        payload=message,
+                        exception=err,
+                    )
                 self._channel.basic_reject(
                     delivery_tag=basic_deliver.delivery_tag, requeue=False
                 )
+                return
             else:
                 """Send an error response to the requestor, with information on the decoding error"""
                 error_response: ResponsePayloadDict = {
@@ -843,7 +749,16 @@ Check that the following exchanges, queues and bindings exist:
                         "error": type(err).__name__,
                         "description": f"Error decoding message: {err}",
                     },
+                    "warning": None,
                 }
+
+                if self._channel is None:
+                    raise NuropbTransportError(
+                        message="unable to return handling error to requestor, RMQ channel closed",
+                        lifecycle="service-decode",
+                        payload=error_response,
+                        exception=err,
+                    )
                 body = encode_payload(error_response, "json")
                 self.send_message(
                     exchange="",
@@ -859,6 +774,8 @@ Check that the following exchanges, queues and bindings exist:
                     },
                     mandatory=True,
                 )
+                self._channel.basic_ack(basic_deliver.delivery_tag)
+                return
 
         try:
             """If the message is a request, then we need to send a response the message ack must only
@@ -868,6 +785,7 @@ Check that the following exchanges, queues and bindings exist:
         except Exception as err:
             logger.error(
                 (
+                    f"lifecycle: service-handle\n"
                     f"Error processing service message # {basic_deliver.delivery_tag}: {err}\n"
                     f"correlation_id: {properties.correlation_id}\n"
                     f"trace_id: {properties.headers.get('trace_id', '')}\n"
@@ -876,6 +794,13 @@ Check that the following exchanges, queues and bindings exist:
             logger.exception("")
             if message["tag"] == "request":
                 """nack the message and requeue it, there was a problem with this instance processing the message"""
+                if self._channel is None or not self._channel.is_open:
+                    raise NuropbTransportError(
+                        message="unable to nack and requeue message due to handling error, RMQ channel closed",
+                        lifecycle="service-handle",
+                        payload=message,
+                        exception=err,
+                    )
                 logger.warning("Nacking message")
                 self._channel.basic_nack(
                     delivery_tag=basic_deliver.delivery_tag, requeue=True
@@ -883,6 +808,13 @@ Check that the following exchanges, queues and bindings exist:
                 return
             else:
                 """If the message is not a request, then we can just reject the message and move on"""
+                if self._channel is None or not self._channel.is_open:
+                    raise NuropbTransportError(
+                        message="unable to reject message due to handling error, RMQ channel closed",
+                        lifecycle="service-handle",
+                        payload=message,
+                        exception=err,
+                    )
                 logger.warning("Rejecting message")
                 self._channel.basic_reject(
                     delivery_tag=basic_deliver.delivery_tag, requeue=False
@@ -900,7 +832,12 @@ Check that the following exchanges, queues and bindings exist:
             # - What happens id the request is resent, can we leverage the existing result
             # - what happens if the request is resent to another service worker?
             # - what happens to the request sender waiting for a response?
-            raise RuntimeError("RMQ transport channel is not open")
+            raise NuropbTransportError(
+                message=f"unable to ack {message['tag']} message, RMQ channel closed",
+                lifecycle="service-ack",
+                payload=message,
+                exception=None,
+            )
 
         self._channel.basic_ack(basic_deliver.delivery_tag)
 

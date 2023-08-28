@@ -1,35 +1,51 @@
 import pytest
 from uuid import uuid4
+import secrets
 import logging
 from nuropb.rmq_api import RMQAPI
-from nuropb.rmq_transport import ServiceNotConfigured, configure_rmq
+from nuropb.rmq_lib import create_virtual_host, delete_virtual_host
+from nuropb.rmq_transport import ServiceNotConfigured
 
 logging.getLogger("pika").setLevel(logging.WARNING)
+logger = logging.getLogger()
+
+
+def test_rmq_preparation(test_settings, test_rmq_url, test_api_url):
+    """ Test that the RMQ instance is and can be correctly configured
+    - create virtual host should be idempotent
+    - delete virtual host should be idempotent
+    """
+    tmp_url = f"{test_rmq_url}-{secrets.token_hex(8)}"
+    create_virtual_host(test_api_url, tmp_url)
+    create_virtual_host(test_api_url, tmp_url)
+    delete_virtual_host(test_api_url, tmp_url)
+    delete_virtual_host(test_api_url, tmp_url)
 
 
 @pytest.mark.asyncio
-async def test_rmq_api():
-    service_name = "un_configured_service"
+async def test_rmq_api_client_mode(test_settings, test_rmq_url):
+    """ Test client mode. this is a client only instance of RMQAPI and only established a connection
+    to the RMQ server. It registers a response queue that is automatically associated with the default
+    exchange, requires that RMQ is sufficiently setup.
+    """
+    service_name = "test_client"
     instance_id = uuid4().hex
+    transport_settings = dict(
+        dl_exchange=test_settings["dl_exchange"],
+        rpc_bindings=[],
+        event_bindings=[],
+        prefetch_count=test_settings["prefetch_count"],
+        default_ttl=test_settings["default_ttl"],
+    )
     rmq_api = RMQAPI(
         service_name=service_name,
         instance_id=instance_id,
-        amqp_url="amqp://guest:guest@localhost:5672/test",
-        rpc_exchange="test_rpc_exchange",
-        events_exchange="test_events_exchange",
-        dl_exchange="test_dl_exchange",
-        rpc_bindings=[service_name],
-        event_bindings=[],
-        prefetch_count=1,
-        default_ttl=60 * 30,  # 30 minutes
+        amqp_url=test_rmq_url,
+        rpc_exchange=test_settings["rpc_exchange"],
+        events_exchange=test_settings["events_exchange"],
+        transport_settings=transport_settings,
+        client_only=True,
     )
-
-    # assert rmq_api.connected is False
-    # with pytest.raises(ServiceNotConfigured):
-    #     await rmq_api.connect()
-    #     assert rmq_api.connected is False
-
-    rmq_api._transport._client_only = True
     await rmq_api.connect()
     assert rmq_api.connected is True
     await rmq_api.disconnect()
@@ -37,87 +53,111 @@ async def test_rmq_api():
 
 
 @pytest.mark.asyncio
-async def test_configure_and_run_api():
-    service_name = "test_service"
-    instance_id = uuid4().hex
-    amqp_url = "amqp://guest:guest@localhost:5672/test"
+async def test_rmq_api_client_mode_unconfigured_rmq(test_settings, unconfigured_rmq_url):
+    """ Test client mode. Test the client behaviour when the RMQ server is not configured.
 
+        Expected behaviour:
+            - RMQAPI.connect() should not raise an exception and behave as if it was connected
+            - RMQAPI.disconnect() should not raise an exception and behave as if it was disconnected
+            - RMQAPI.request() should raise an exception
+            - RMQAPI.command() should raise an exception
+            - RMQAPI.publish_event() should raise an exception
+    """
+    logger.info("testing against RMQ server: %s", unconfigured_rmq_url)
+    service_name = "test_client"
+    instance_id = uuid4().hex
+    transport_settings = dict(
+        dl_exchange=test_settings["dl_exchange"],
+        rpc_bindings=[],
+        event_bindings=[],
+        prefetch_count=test_settings["prefetch_count"],
+        default_ttl=test_settings["default_ttl"],
+    )
     rmq_api = RMQAPI(
         service_name=service_name,
         instance_id=instance_id,
-        amqp_url=amqp_url,
-        rpc_exchange="test_rpc_exchange",
-        events_exchange="test_events_exchange",
-        dl_exchange="test_dl_exchange",
-        rpc_bindings=[service_name],
-        event_bindings=[],
-        prefetch_count=1,
-        default_ttl=60 * 30,  # 30 minutes
+        amqp_url=unconfigured_rmq_url,
+        rpc_exchange=test_settings["rpc_exchange"],
+        events_exchange=test_settings["events_exchange"],
+        transport_settings=transport_settings,
+        client_only=True,
     )
 
-    configured = configure_rmq(
-        rmq_url=amqp_url,
-        rpc_exchange=rmq_api._transport._rpc_exchange,
-        events_exchange=rmq_api._transport._events_exchange,
-        dl_exchange=rmq_api._transport._dl_exchange,
-        dl_queue=rmq_api._transport._dl_queue,
-        request_queue=rmq_api._transport._request_queue,
-        response_queue=rmq_api._transport._response_queue,
-        rpc_bindings=[service_name],
-        event_bindings=[],
-    )
-    assert configured is True
+    with pytest.raises(ServiceNotConfigured):
+        await rmq_api.connect()
+        assert rmq_api.connected is False
 
+    await rmq_api.disconnect()
     assert rmq_api.connected is False
-    await rmq_api.connect()
-    assert rmq_api.connected is True
 
 
 @pytest.mark.asyncio
-async def test_request_response():
-    service_name = "test_service"
+async def test_rmq_api_service_mode(test_settings, test_rmq_url):
+    service_name = test_settings["service_name"]
     instance_id = uuid4().hex
-    amqp_url = "amqp://guest:guest@localhost:5672/test"
+    transport_settings = dict(
+        dl_exchange=test_settings["dl_exchange"],
+        rpc_bindings=test_settings["rpc_bindings"],
+        event_bindings=test_settings["event_bindings"],
+        prefetch_count=test_settings["prefetch_count"],
+        default_ttl=test_settings["default_ttl"],
+    )
+    rmq_api = RMQAPI(
+        service_name=service_name,
+        instance_id=instance_id,
+        amqp_url=test_rmq_url,
+        rpc_exchange=test_settings["rpc_exchange"],
+        events_exchange=test_settings["events_exchange"],
+        transport_settings=transport_settings,
+        client_only=True,
+    )
+    await rmq_api.connect()
+    assert rmq_api.connected is True
+    await rmq_api.disconnect()
+    assert rmq_api.connected is False
+
+
+@pytest.mark.asyncio
+async def test_request_response(test_settings, test_rmq_url):
+    service_name = test_settings["service_name"]
+    instance_id = uuid4().hex
+    transport_settings = dict(
+        dl_exchange=test_settings["dl_exchange"],
+        rpc_bindings=test_settings["rpc_bindings"],
+        event_bindings=test_settings["event_bindings"],
+        prefetch_count=test_settings["prefetch_count"],
+        default_ttl=test_settings["default_ttl"],
+    )
     service_api = RMQAPI(
         service_name=service_name,
         instance_id=instance_id,
-        amqp_url=amqp_url,
+        amqp_url=test_rmq_url,
         rpc_exchange="test_rpc_exchange",
         events_exchange="test_events_exchange",
-        dl_exchange="test_dl_exchange",
-        rpc_bindings=[service_name],
-        event_bindings=[],
-        prefetch_count=1,
-        default_ttl=60 * 30,  # 30 minutes
+        transport_settings=transport_settings,
     )
-    configured = configure_rmq(
-        rmq_url=amqp_url,
-        rpc_exchange=service_api._transport._rpc_exchange,
-        events_exchange=service_api._transport._events_exchange,
-        dl_exchange=service_api._transport._dl_exchange,
-        dl_queue=service_api._transport._dl_queue,
-        request_queue=service_api._transport._request_queue,
-        response_queue=service_api._transport._response_queue,
-        rpc_bindings=[service_name],
-        event_bindings=[],
-    )
-    assert configured is True
     assert service_api.connected is False
     await service_api.connect()
     assert service_api.connected is True
 
     service_name = "test_client"
     instance_id = uuid4().hex
+    client_transport_settings = dict(
+        dl_exchange=test_settings["dl_exchange"],
+        rpc_bindings=[],
+        event_bindings=[],
+        prefetch_count=test_settings["prefetch_count"],
+        default_ttl=test_settings["default_ttl"],
+    )
     client_api = RMQAPI(
         service_name=service_name,
         instance_id=instance_id,
-        amqp_url="amqp://guest:guest@localhost:5672/test",
+        amqp_url=test_rmq_url,
         rpc_exchange="test_rpc_exchange",
         events_exchange="test_events_exchange",
-        prefetch_count=1,
-        default_ttl=60 * 30 * 1000,  # 30 minutes
+        transport_settings=client_transport_settings,
+        client_only=True,
     )
-    client_api._transport._client_only = True
     await client_api.connect()
     assert client_api.connected is True
     service = "test_service"

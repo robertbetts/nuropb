@@ -1,2 +1,4 @@
-# nuropb
-Distributed Request Response Framework 
+# NuroPb
+
+A distributed Request-Response, Command and Eventing Framework 
+

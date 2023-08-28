@@ -32,8 +32,8 @@ class TestInterface(NuropbInterface):
         transport_class: Any,
         transport_settings: Dict[str, Any],
     ):
-        self.service_name = service_name
-        self.instance_id = instance_id or uuid4().hex
+        self._service_name = service_name
+        self._instance_id = instance_id or uuid4().hex
         self._leader = True
         transport_settings.update(
             {
