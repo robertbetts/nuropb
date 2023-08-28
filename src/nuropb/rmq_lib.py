@@ -7,19 +7,24 @@ from contextlib import contextmanager
 
 import requests
 import pika
+from pika.channel import Channel
+
+from nuropb.interface import PayloadDict, NuropbTransportError
 
 logger = logging.getLogger()
 
 
-def amqp_url(host: str, port: str | int, username: str, password: str, vhost: str) -> str:
-    """ Create an AMQP URL for connecting to RabbitMQ
-    """
+def amqp_url(
+    host: str, port: str | int, username: str, password: str, vhost: str
+) -> str:
+    """Create an AMQP URL for connecting to RabbitMQ"""
     return f"amqp://{username}:{password}@{host}:{port}/{vhost}"
 
 
-def rmq_api_url(scheme: str, host: str, port: str | int, username: str, password: str) -> str:
-    """ Create an API URL for connecting to RabbitMQ
-    """
+def rmq_api_url(
+    scheme: str, host: str, port: str | int, username: str, password: str
+) -> str:
+    """Create an API URL for connecting to RabbitMQ"""
     return f"{scheme}://{username}:{password}@{host}:{port}/api"
 
 
@@ -43,15 +48,15 @@ def blocking_rabbitmq_channel(rmq_url: str) -> pika.channel.Channel:
 
 
 def configure_nuropb_rmq(
-        service_name: str,
-        rmq_url: str,
-        events_exchange: str,
-        rpc_exchange: str,
-        dl_exchange: str,
-        dl_queue: str,
-        request_queue: str,
-        rpc_bindings: List[str],
-        event_bindings: List[str],
+    service_name: str,
+    rmq_url: str,
+    events_exchange: str,
+    rpc_exchange: str,
+    dl_exchange: str,
+    dl_queue: str,
+    request_queue: str,
+    rpc_bindings: List[str],
+    event_bindings: List[str],
 ) -> bool:
     """Configure the RabbitMQ broker for this transport.
 
@@ -133,8 +138,71 @@ def configure_nuropb_rmq(
     return rabbitmq_configured
 
 
+def nack_message(
+    channel: Channel,
+    delivery_tag: int,
+    properties: pika.spec.BasicProperties,
+    mesg: PayloadDict | None,
+    error: Exception | None = None,
+) -> None:
+    """nack the message and requeue it, there was a problem with this instance processing the message"""
+    if channel is None or not channel.is_open:
+        raise NuropbTransportError(
+            message=f"Unable to nack and requeue message, RMQ channel closed",
+            lifecycle="service-handle",
+            payload=mesg,
+            exception=error,
+        )
+    logger.warning(
+        f"Nacking message, delivery_tag: {delivery_tag}, correlation_id: {properties.correlation_id}"
+    )
+    channel.basic_nack(delivery_tag=delivery_tag, requeue=True)
+
+
+def reject_message(
+    channel: Channel,
+    delivery_tag: int,
+    properties: pika.spec.BasicProperties,
+    mesg: PayloadDict | None,
+    error: Exception | None = None,
+) -> None:
+    """If the message is not a request, then reject the message and move on"""
+    if channel is None or not channel.is_open:
+        raise NuropbTransportError(
+            message=f"unable to reject message, RMQ channel closed",
+            lifecycle="service-handle",
+            payload=mesg,
+            exception=error,
+        )
+    logger.warning(
+        f"Rejecting message, delivery_tag: {delivery_tag}, correlation_id: {properties.correlation_id}"
+    )
+    channel.basic_reject(delivery_tag=delivery_tag, requeue=False)
+
+
+def ack_message(
+    channel: Channel,
+    delivery_tag: int,
+    properties: pika.spec.BasicProperties,
+    mesg: PayloadDict | None,
+    error: Exception | None = None,
+) -> None:
+    """ack the message"""
+    if channel is None or not channel.is_open:
+        raise NuropbTransportError(
+            message=f"Unable to ack message, RMQ channel closed",
+            lifecycle="service-ack",
+            payload=mesg,
+            exception=error,
+        )
+    logger.warning(
+        f"Acking message, delivery_tag: {delivery_tag}, correlation_id: {properties.correlation_id}"
+    )
+    channel.basic_ack(delivery_tag=delivery_tag)
+
+
 def get_virtual_hosts(api_url: str, vhost_url: str) -> Any | None:
-    """ Creates a virtual host on the RabbitMQ server using the REST API
+    """Creates a virtual host on the RabbitMQ server using the REST API
     :param api_url: the url to the RabbitMQ API
     :param vhost_url: the virtual host to create
 
@@ -157,7 +225,7 @@ def get_virtual_hosts(api_url: str, vhost_url: str) -> Any | None:
 
 
 def create_virtual_host(api_url: str, vhost_url: str) -> None:
-    """ Creates a virtual host on the RabbitMQ server using the REST API
+    """Creates a virtual host on the RabbitMQ server using the REST API
     :param api_url: the url to the RabbitMQ API
     :param vhost_url: the virtual host to create
 
@@ -190,7 +258,7 @@ def create_virtual_host(api_url: str, vhost_url: str) -> None:
 
 
 def delete_virtual_host(api_url: str, vhost_url: str) -> None:
-    """ Deletes a virtual host on the RabbitMQ server using the REST API
+    """Deletes a virtual host on the RabbitMQ server using the REST API
     :param api_url: the url to the RabbitMQ API
     :param vhost_url: the virtual host to delete
 
@@ -217,5 +285,3 @@ def delete_virtual_host(api_url: str, vhost_url: str) -> None:
     )
     logger.info(f"vhost deleted: {vhost}")
     response.raise_for_status()
-
-

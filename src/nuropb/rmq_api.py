@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Any, Union, List, Awaitable, Set
+from typing import Dict, Optional, Any, Union, List, Awaitable, Set, Callable
 from uuid import uuid4
 import logging
 from asyncio import Future
@@ -9,7 +9,7 @@ from nuropb.interface import (
     PayloadDict,
     ResponsePayloadDict,
     RequestPayloadDict,
-    EventPayloadDict,
+    EventPayloadDict, AcknowledgeActions,
 )
 from nuropb.rmq_transport import RMQTransport, encode_payload
 
@@ -17,8 +17,8 @@ logger = logging.getLogger()
 
 
 class RMQAPI(NuropbInterface):
-    """RMQAPI: A NuropbInterface implementation that uses RabbitMQ as the underlying transport.
-    """
+    """RMQAPI: A NuropbInterface implementation that uses RabbitMQ as the underlying transport."""
+
     _response_futures: Dict[str, Any]
     _transport: RMQTransport
     _rpc_exchange: str
@@ -34,18 +34,9 @@ class RMQAPI(NuropbInterface):
         client_only: bool = False,
         rpc_exchange: Optional[str] = None,
         events_exchange: Optional[str] = None,
-        # dl_exchange: Optional[str] = None,
-        # dl_queue: Optional[str] = None,
-        # request_queue: Optional[str] = None,
-        # response_queue: Optional[str] = None,
-        # rpc_bindings: Optional[List[str] | Set[str]] = None,
-        # event_bindings: Optional[List[str] | Set[str]] = None,
-        # prefetch_count: Optional[int] = None,
-        # default_ttl: Optional[int] = None,
         transport_settings: Optional[Dict[str, Any]] = None,
     ):
-        """RMQAPI: A NuropbInterface implementation that uses RabbitMQ as the underlying transport.
-        """
+        """RMQAPI: A NuropbInterface implementation that uses RabbitMQ as the underlying transport."""
         transport_settings = {} if transport_settings is None else transport_settings
         default_ttl = transport_settings.get("default_ttl", None)
 
@@ -53,14 +44,16 @@ class RMQAPI(NuropbInterface):
         self._default_ttl = 60 * 60 * 1000 if default_ttl is None else default_ttl
         self._client_only = client_only
 
-        transport_settings.update({
-            "service_name": service_name,
-            "instance_id": instance_id,
-            "amqp_url": amqp_url,
-            "message_callback": self.receive_transport_message,
-            "rpc_exchange": rpc_exchange,
-            "events_exchange": events_exchange,
-        })
+        transport_settings.update(
+            {
+                "service_name": service_name,
+                "instance_id": instance_id,
+                "amqp_url": amqp_url,
+                "message_callback": self.receive_transport_message,
+                "rpc_exchange": rpc_exchange,
+                "events_exchange": events_exchange,
+            }
+        )
         self._transport = RMQTransport(**transport_settings)
         self._rpc_exchange = self._transport.rpc_exchange
         self._events_exchange = self._transport.events_exchange
@@ -88,16 +81,21 @@ class RMQAPI(NuropbInterface):
         """
         await self._transport.stop()
 
-    def receive_transport_message(self, message: PayloadDict) -> None:
+    def receive_transport_message(
+        self, message: PayloadDict, acknowledge_function: Optional[Callable[[AcknowledgeActions], None]]
+    ) -> None:
         """_received_message_over_transport: handles a messages received from the transport and routes it to the
             appropriate handler
         :return: None
         """
-        if message["tag"] == "request":
+        if message["tag"] in ("request", "command"):
             logger.debug(
-                "Received request: %s.%s", message["service"], message["method"]
+                "Received %s: %s.%s",
+                message["tag"],
+                message["service"],
+                message["method"],
             )
-
+            # TODO: Implement request and command execution here
             """ Echo sample response
             """
             response_message: ResponsePayloadDict = {
@@ -122,6 +120,14 @@ class RMQAPI(NuropbInterface):
             self._transport.send_message(
                 "", routing_key, body, properties=properties, mandatory=True
             )
+            if acknowledge_function is not None:
+                acknowledge_function("ack")
+
+        elif message["tag"] == "event":
+            logger.debug("Received event: %s", message["topic"])
+            # TODO: Implement request and command execution here
+            if acknowledge_function is not None:
+                acknowledge_function("ack")
 
         elif message["tag"] == "response":
             logger.debug("Received response: %s", message["correlation_id"])
@@ -134,13 +140,8 @@ class RMQAPI(NuropbInterface):
             response_future = self._response_futures.pop(message["correlation_id"])
             response_future.set_result(message)
 
-        elif message["tag"] == "event":
-            logger.debug("Received event: %s", message["topic"])
-
-        elif message["tag"] == "command":
-            logger.debug(
-                "Received command: %s.%s", message["service"], message["method"]
-            )
+        else:
+            logger.warning("Received an unknown message type: %s", message["tag"])
 
     async def request(
         self,

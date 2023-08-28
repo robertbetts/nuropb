@@ -2,7 +2,7 @@ import json
 import logging
 import functools
 import re
-from typing import List, Set, Optional, Any, Dict, Awaitable
+from typing import List, Set, Optional, Any, Dict, Awaitable, cast, Literal
 import asyncio
 
 import pika
@@ -14,11 +14,21 @@ import pika.spec
 from nuropb.interface import (
     MessageCallbackType,
     PayloadDict,
-    ResponsePayloadDict, NuropbTransportError,
+    ResponsePayloadDict,
+    NuropbTransportError,
+    NuropbLifecycleState,
+    NuropbSuccess,
+    NuropbHandlingError,
+    NuropbDeprecatedError,
+    NuropbValidationError,
+    NuropbAuthenticationError,
+    NuropbAuthorizationError,
 )
+from nuropb.rmq_lib import ack_message, nack_message, reject_message
+
 
 logger = logging.getLogger()
-# The length of time to wait when shutting down for consumers to close.
+# The length of time to wait when shutting down consumers.
 CONSUMER_CLOSED_WAIT_TIMEOUT = 10
 
 
@@ -161,7 +171,6 @@ class RMQTransport:
     _client_only: bool
     _message_callback: MessageCallbackType
 
-    _response_futures: Dict[str, Awaitable[PayloadDict]]
     _connected_future: Any
     _disconnected_future: Any
 
@@ -251,7 +260,6 @@ class RMQTransport:
         self._is_leader = True
         self._is_rabbitmq_configured = False
 
-        self._response_futures = {}
         self._connected_future = None
         self._disconnected_future = None
 
@@ -494,7 +502,7 @@ Check that the following exchanges, queues and bindings exist:
             raise RuntimeError("RMQ transport channel is not open")
 
         cb = functools.partial(
-            self.on_response_queue_declareok, userdata=self._response_queue
+            self.on_response_queue_declareok, _userdata=self._response_queue
         )
         response_queue_config = {"durable": False, "auto_delete": True}
         self._channel.queue_declare(
@@ -502,14 +510,14 @@ Check that the following exchanges, queues and bindings exist:
         )
 
     def on_response_queue_declareok(
-        self, frame: pika.frame.Method, userdata: str
+        self, frame: pika.frame.Method, _userdata: str
     ) -> None:
         """Method invoked by pika when the Queue.Declare RPC call made in setup_response_queue has
         completed. In this method we will bind request queue and the response queues. When this
         command is complete, the on_bindok method will be invoked by pika.
 
-        :param pika.frame.Method _unused_frame: The Queue.DeclareOk frame
-        :param str|unicode userdata: Extra user data (queue name)
+        :param pika.frame.Method frame: The Queue.DeclareOk frame
+        :param str|unicode _userdata: Extra user data (queue name)
         """
 
         if not self._client_only:
@@ -557,7 +565,7 @@ Check that the following exchanges, queues and bindings exist:
         """Invoked by pika when the Queue.Bind method has completed. At this
         point we will set the prefetch count for the channel.
 
-        :param pika.frame.Method _unused_frame: The Queue.BindOk response frame
+        :param pika.frame.Method _frame: The Queue.BindOk response frame
         :param str|unicode userdata: Extra user data (queue name)
 
         """
@@ -580,7 +588,7 @@ Check that the following exchanges, queues and bindings exist:
         point we will start consuming messages by calling start_consuming
         which will invoke the needed RPC commands to start the process.
 
-        :param pika.frame.Method _unused_frame: The Basic.QosOk response frame
+        :param pika.frame.Method _frame: The Basic.QosOk response frame
 
         This method sets up the consumer by first calling
         add_on_cancel_callback so that the object is notified if RabbitMQ
@@ -653,23 +661,70 @@ Check that the following exchanges, queues and bindings exist:
         properties: Dict[str, Any],
         mandatory: bool,
     ) -> None:
-        """Send a message to RabbitMQ"""
-        if self._channel is None:
-            raise RuntimeError("RMQ transport channel is not open")
+        """Send a message to over the RabbitMQ Transport
 
-        basic_properties = pika.BasicProperties(**properties)
-        self._channel.basic_publish(
-            exchange=exchange,
-            routing_key=routing_key,
-            body=body,
-            properties=basic_properties,
-            mandatory=mandatory,
-        )
+            # TODO: Think about how to handle if the channel is closed. wait and retry on a new channel?
+            - a retry queue?
+            - should be be a high water mark for the number of retries?
+            - should no more messages be consumed until the channel is re-established and retry queue drained?
+
+        :param str exchange: The exchange to publish to
+        :param str routing_key: The routing key to publish with
+        :param bytes body: The message body
+        :param Dict[str, Any] properties: The message properties
+        :param bool mandatory: The mandatory flag
+        """
+        if self._channel is None:
+            lifecycle: NuropbLifecycleState
+            if properties.get("headers", {}).get("nuropb_type", "") == "response":
+                lifecycle = "service-reply"
+            else:
+                lifecycle = "client-send"
+            if properties.get("content_type", "") == "application/json":
+                payload = cast(PayloadDict, decode_payload(body, "json"))
+            else:
+                payload = None
+            raise NuropbTransportError(
+                message="RMQ channel closed, send message",
+                lifecycle=lifecycle,
+                payload=payload,
+                exception=None,
+            )
+        else:
+            basic_properties = pika.BasicProperties(**properties)
+            self._channel.basic_publish(
+                exchange=exchange,
+                routing_key=routing_key,
+                body=body,
+                properties=basic_properties,
+                mandatory=mandatory,
+            )
+
+    def acknowledge_service_message(
+        self,
+        channel: Channel,
+        delivery_tag: int,
+        action: Literal["ack", "nack", "reject"],
+    ) -> None:
+        """Acknowledge a service message
+
+        :param pika.channel.Channel channel: The channel object
+        :param int delivery_tag: The delivery tag
+        :param str action: The action to take, one of ack, nack or reject
+        """
+        if action == "ack":
+            channel.basic_ack(delivery_tag=delivery_tag)
+        elif action == "nack":
+            channel.basic_nack(delivery_tag=delivery_tag, requeue=True)
+        elif action == "reject":
+            channel.basic_reject(delivery_tag=delivery_tag, requeue=True)
+        else:
+            raise ValueError(f"Invalid action {action}")
 
     def on_service_message(
         self,
         _queue_name: str,
-        _channel: Channel,
+        channel: Channel,
         basic_deliver: pika.spec.Basic.Deliver,
         properties: pika.spec.BasicProperties,
         body: bytes,
@@ -682,16 +737,20 @@ Check that the following exchanges, queues and bindings exist:
         the error handling here can seem a little complicated, essentially if an error receiving and handling a
         can be returned to the sender, then we do it. If the message is not a request, then we can just reject
         the message and move on. If the message is a request, then we need to send a response the message ack must
-        only take place after _message_callback has been successfully compelted.
+        only take place after _message_callback has been successfully completed.
 
         if the processing of a request message fails, then we nack the message and requeue it, there was a problem
         with this instance processing the message.
 
-        # TODO we need to think about eccesive errors and decide on a strategy for for shutting down the service
-        # instance
+        # TODO: Needing to think about excessive errors and decide on a strategy for for shutting down
+        # the service instance. Should this take place in the transport layer or the API ?
+        # - what happens to the result if the channel is closed?
+        # - What happens id the request is resent, can we leverage the existing result
+        # - what happens if the request is resent to another service worker?
+        # - what happens to the request sender waiting for a response?
 
         :param str _queue_name: The name of the queue that the message was received on
-        :param pika.channel.Channel _channel: The channel object
+        :param pika.channel.Channel channel: The channel object
         :param pika.spec.Basic.Deliver basic_deliver: basic_deliver method
         :param pika.spec.BasicProperties properties: properties
         :param bytes body: The message body
@@ -703,87 +762,53 @@ Check that the following exchanges, queues and bindings exist:
             f"correlation_id: {properties.correlation_id}\n"
             f"trace_id: {properties.headers.get('trace_id', '')}\n"
             f"content_type: {properties.content_type}\n"
-            f"body: {body!r}\n"
         )
+
         message: PayloadDict | None = None
         try:
-            message = decode_rmq_message(basic_deliver, properties, body)
-        except Exception as err:
-            logger.exception(
-                (
-                    f"Error decoding service message # {basic_deliver.delivery_tag}: {err}\n"
-                    f"Error: {err}\n"
-                    f"message type: {properties.headers.get('nuropb_type', '')}\n"
-                    f"correlation_id: {properties.correlation_id}\n"
-                    f"trace_id: {properties.headers.get('trace_id', '')}\n"
-                )
-            )
-            if not (
-                properties.headers.get("nuropb_type", "") == "request"
-                and properties.reply_to
-            ):
-                """If the message is not a request or replay-able, then we can just reject the message and move on"""
-                logger.warning("Rejecting message")
-                if self._channel is None:
-                    raise NuropbTransportError(
-                        message="unable to reject message due to handling error, RMQ channel closed",
-                        lifecycle="service-decode",
-                        payload=message,
-                        exception=err,
-                    )
-                self._channel.basic_reject(
-                    delivery_tag=basic_deliver.delivery_tag, requeue=False
-                )
-                return
-            else:
-                """Send an error response to the requestor, with information on the decoding error"""
-                error_response: ResponsePayloadDict = {
-                    "tag": "response",
-                    "correlation_id": properties.correlation_id,
-                    "context": {
-                        "rmq_context": properties.correlation_id,
-                    },
-                    "trace_id": properties.headers.get("trace_id", ""),
-                    "result": None,
-                    "error": {
-                        "error": type(err).__name__,
-                        "description": f"Error decoding message: {err}",
-                    },
-                    "warning": None,
-                }
-
-                if self._channel is None:
-                    raise NuropbTransportError(
-                        message="unable to return handling error to requestor, RMQ channel closed",
-                        lifecycle="service-decode",
-                        payload=error_response,
-                        exception=err,
-                    )
-                body = encode_payload(error_response, "json")
-                self.send_message(
-                    exchange="",
-                    routing_key=properties.reply_to,
-                    body=body,
-                    properties={
-                        "correlation_id": properties.correlation_id,
-                        "headers": {
-                            "nuropb_type": "response",
-                            "trace_id": properties.headers.get("trace_id", ""),
-                        },
-                        "content_type": properties.content_type,
-                    },
-                    mandatory=True,
-                )
-                self._channel.basic_ack(basic_deliver.delivery_tag)
-                return
-
-        try:
             """If the message is a request, then we need to send a response the message ack must only
-            take place after _message_callback has been successfully compelted
+            take place after message handling has been successfully completed. The ack of the message
+            must take place on this channel using the delivery tag of this message.
+
+            The exception handling below is a safety net, errors should be handled in the message_callback.
             """
-            self._message_callback(message)
+            message = decode_rmq_message(basic_deliver, properties, body)
+            acknowledge_function = functools.partial(
+                self.acknowledge_service_message, channel, basic_deliver.delivery_tag
+            )
+            self._message_callback(message, acknowledge_function)
+
+        except NuropbTransportError as err:
+            """Bubble this error up through the transport layer"""
+            raise err
+
+        except NuropbSuccess as err:
+            """Treat this as a successful response, the response message to be sent is embedded in
+            err.payload
+            """
+            if message is None and properties.content_type == "application/json":
+                message = cast(PayloadDict, decode_payload(body, "json"))
+            ack_message(channel, basic_deliver.delivery_tag, properties, message, err)
+            raise NotImplementedError()
+
+        except (
+            NuropbHandlingError,
+            NuropbDeprecatedError,
+            NuropbValidationError,
+            NuropbAuthenticationError,
+            NuropbAuthorizationError,
+        ) as err:
+            """These are treated as permanent failures, ack the message and send error response"""
+            if message is None and properties.content_type == "application/json":
+                message = cast(PayloadDict, decode_payload(body, "json"))
+            nack_message(channel, basic_deliver.delivery_tag, properties, message, err)
+            raise NotImplementedError()
+
         except Exception as err:
-            logger.error(
+            """The remainder of exceptions are treated as temporary failures. For requests and commands,
+            nack the message and requeue it, for events, reject the message and drop it.
+            """
+            logger.exception(
                 (
                     f"lifecycle: service-handle\n"
                     f"Error processing service message # {basic_deliver.delivery_tag}: {err}\n"
@@ -791,59 +816,28 @@ Check that the following exchanges, queues and bindings exist:
                     f"trace_id: {properties.headers.get('trace_id', '')}\n"
                 )
             )
-            logger.exception("")
-            if message["tag"] == "request":
+            """ we can't rely on message being set here as it may have failed to decode, if so then we
+            need to decode the message from the body.
+            """
+            if message is None and properties.content_type == "application/json":
+                message = cast(PayloadDict, decode_payload(body, "json"))
+
+            if message and message["tag"] in ("request", "command"):
                 """nack the message and requeue it, there was a problem with this instance processing the message"""
-                if self._channel is None or not self._channel.is_open:
-                    raise NuropbTransportError(
-                        message="unable to nack and requeue message due to handling error, RMQ channel closed",
-                        lifecycle="service-handle",
-                        payload=message,
-                        exception=err,
-                    )
-                logger.warning("Nacking message")
-                self._channel.basic_nack(
-                    delivery_tag=basic_deliver.delivery_tag, requeue=True
+                nack_message(
+                    channel, basic_deliver.delivery_tag, properties, message, err
                 )
                 return
             else:
-                """If the message is not a request, then we can just reject the message and move on"""
-                if self._channel is None or not self._channel.is_open:
-                    raise NuropbTransportError(
-                        message="unable to reject message due to handling error, RMQ channel closed",
-                        lifecycle="service-handle",
-                        payload=message,
-                        exception=err,
-                    )
-                logger.warning("Rejecting message")
-                self._channel.basic_reject(
-                    delivery_tag=basic_deliver.delivery_tag, requeue=False
+                """If the message is not a request or command, then reject the message and move on"""
+                reject_message(
+                    channel, basic_deliver.delivery_tag, properties, message, err
                 )
                 return
 
-        logger.debug(
-            "Acknowledging service message receipt %s", basic_deliver.delivery_tag
-        )
-        if self._channel is None:
-            # TODO: Handle the case for this logic cleanly, is there a retry mechanism possilbe
-            #  after re-establishing a new channel?
-            #  things to think about:
-            # - what happens to the result if the channel is closed?
-            # - What happens id the request is resent, can we leverage the existing result
-            # - what happens if the request is resent to another service worker?
-            # - what happens to the request sender waiting for a response?
-            raise NuropbTransportError(
-                message=f"unable to ack {message['tag']} message, RMQ channel closed",
-                lifecycle="service-ack",
-                payload=message,
-                exception=None,
-            )
-
-        self._channel.basic_ack(basic_deliver.delivery_tag)
-
     def on_response_message(
         self,
-        queue_name: str,
+        _queue_name: str,
         channel: pika.channel.Channel,  # noqa
         basic_deliver: pika.spec.Basic.Deliver,
         properties: pika.spec.BasicProperties,
@@ -855,9 +849,9 @@ Check that the following exchanges, queues and bindings exist:
         in is an instance of BasicProperties with the message properties and the body is the
         message that was sent.
 
-        :param str queue_name: The name of the queue that the message was received on
-        :param pika.channel.Channel _unused_channel: The channel object
-        :param pika.spec.Basic.Deliver basic_deliver: basic_deliver method
+        :param str _queue_name: The name of the queue that the message was received on
+        :param pika.channel.Channel channel: The channel object
+        :param pika.spec.Basic.Deliver basic_deliver: basic_deliver
         :param pika.spec.BasicProperties properties: properties
         :param bytes body: The message body
         """
@@ -869,23 +863,19 @@ Check that the following exchanges, queues and bindings exist:
                 f"correlation_id: {properties.correlation_id}\n"
                 f"trace_id: {properties.headers.get('trace_id', '')}\n"
                 f"content_type: {properties.content_type}\n"
-                f"body: {body!r}\n"
             )
         )
-
         try:
             message = decode_rmq_message(basic_deliver, properties, body)
-            self._message_callback(message)
+            self._message_callback(message, None)
         except Exception as err:
-            logger.error(
+            logger.exception(
                 (
                     f"Error processing response message # {basic_deliver.delivery_tag}: {err}\n"
                     f"correlation_id: {properties.correlation_id}\n"
                     f"trace_id: {properties.headers.get('trace_id', '')}\n"
                 )
             )
-            logger.exception("")
-            return
 
     async def stop_consuming(self) -> None:
         """Tell RabbitMQ that you would like to stop consuming by sending the

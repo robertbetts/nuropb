@@ -18,11 +18,21 @@ NuropbSerializeType = Literal["json"]
 NuropbMessageType = Literal["request", "response", "event", "command"]
 
 NuropbLifecycleState = Literal[
-    "client-start", "client-encode", "client-send",
-    "service-receive", "service-decode", "service-handle",
-    "service-encode", "service-reply", "service-ack",
-    "client-receive", "client-decode", "client-handle",
-    "client-ack", "client-end"]
+    "client-start",
+    "client-encode",
+    "client-send",
+    "service-receive",
+    "service-decode",
+    "service-handle",
+    "service-encode",
+    "service-reply",
+    "service-ack",
+    "client-receive",
+    "client-decode",
+    "client-handle",
+    "client-ack",
+    "client-end",
+]
 
 
 class BasePayloadDict(TypedDict):
@@ -72,8 +82,12 @@ PayloadDict = Union[
     UnknownPayloadDict,
 ]
 
+AcknowledgeActions = Literal["ack", "nack", "reject"]
 
-MessageCallbackType = Callable[[PayloadDict], None]
+
+MessageCallbackType = Callable[
+    [PayloadDict, Optional[Callable[[AcknowledgeActions], None]]], None
+]
 """ Type[BasePayloadDict]: represents a callable with a single argument of type NuropbMessageDict :
 """
 
@@ -92,16 +106,17 @@ class NuropbException(Exception):
     meaningful value and the nuropb_lifecycle and nuropb_message are set to the values that were
     present when the exception was raised.
     """
+
     lifecycle: NuropbLifecycleState | None
     payload: PayloadDict | None
     exception: Exception | None
 
     def __init__(
-            self,
-            message: Optional[str] = None,
-            lifecycle: Optional[NuropbLifecycleState] = None,
-            payload: Optional[PayloadDict] = None,
-            exception: Optional[Exception] = None,
+        self,
+        message: Optional[str] = None,
+        lifecycle: Optional[NuropbLifecycleState] = None,
+        payload: Optional[PayloadDict] = None,
+        exception: Optional[Exception] = None,
     ):
         super().__init__(message)
         self.lifecycle = lifecycle
@@ -115,6 +130,7 @@ class NuropbTimeoutError(NuropbException):
     The handling of this error will depend on the message type, context and where in the lifecycle
     of the message the timeout occurred.
     """
+
     pass
 
 
@@ -124,6 +140,7 @@ class NuropbTransportError(NuropbException):
     The handling of this error will depend on the message type, context and where in the lifecycle
     of the message the timeout occurred.
     """
+
     pass
 
 
@@ -134,6 +151,7 @@ class NuropbMessageError(NuropbException):
     The handling of this error will depend on the message type, context and where in the lifecycle
     of the message the timeout occurred.
     """
+
     pass
 
 
@@ -144,6 +162,7 @@ class NuropbHandlingError(NuropbException):
     The handling of this error will depend on the message type, context and where in the lifecycle
     of the message the timeout occurred.
     """
+
     pass
 
 
@@ -156,9 +175,21 @@ class NuropbDeprecatedError(NuropbHandlingError):
     """
 
 
+class NuropbValidationError(NuropbException):
+    """NuropbValidationError: represents an error that occurred during the validation of a
+    request or command. An error response is returned to the requester.
+
+    An error response is returned to the requester ONLY for requests and commands.
+    Events will be rejected with a NACK with requeue=False.
+    """
+
+
 class NuropbAuthenticationError(NuropbException):
     """NuropbAuthenticationError: when this exception is raised, the transport layer will ACK the
     message and return an authentication error response to the requester.
+
+    This exception occurs whe the identity of the requester can not be validated. for example
+    an unknown, invalid or expired user identifier or auth token.
 
     The handling of this error will depend on the message type, context and where in the lifecycle
     of the message the timeout occurred.
@@ -167,13 +198,31 @@ class NuropbAuthenticationError(NuropbException):
     valid credentials and retry the request. The approach to this retry outside the scope of the
     nuropb API.
     """
+
     pass
+
+
+class NuropbAuthorizationError(NuropbException):
+    """NuropbAuthorizationError: when this exception is raised, the transport layer will ACK the
+    message and return an authorization error response to the requester.
+
+    This exception occurs whe the requester does not have the required privileges to perform the
+    requested action of either a request or command.
+
+    The handling of this error will depend on the message type, context and where in the lifecycle
+    of the message the timeout occurred.
+
+    In most cases, the requester will not be able to recover from this error and will need provide
+    valid credentials and retry the request. The approach to this retry outside the scope of the
+    nuropb API.
+    """
 
 
 class NuropbCallAgain(NuropbException):
     """NuropbCallAgain: when this exception is raised, the transport layer will NACK the message
     and schedule it to be redelivered after a delay. The delay is determined by the transport layer.
     """
+
     pass
 
 
@@ -185,12 +234,12 @@ class NuropbSuccess(NuropbException):
     There are some use cases where the service may want to return a success response irrespective
     to the handling of the request.
     """
+
     pass
 
 
 class NuropbInterface(ABC):
-    """NuropbInterface: represents the interface that must be implemented by a nuropb API implementation
-    """
+    """NuropbInterface: represents the interface that must be implemented by a nuropb API implementation"""
 
     _service_name: str
     _instance_id: str
