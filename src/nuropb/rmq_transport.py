@@ -14,7 +14,6 @@ import pika.spec
 from nuropb.interface import (
     MessageCallbackType,
     PayloadDict,
-    ResponsePayloadDict,
     NuropbTransportError,
     NuropbLifecycleState,
     NuropbSuccess,
@@ -398,7 +397,7 @@ class RMQTransport:
         """This method is called by pika if the connection to RabbitMQ
         can't be established.
 
-        :param pika.adapters.asyncio_connection.AsyncioConnection _unused_connection:
+        :param pika.adapters.asyncio_connection.AsyncioConnection _connection:
            The connection
         :param Exception err: The error
         """
@@ -413,7 +412,7 @@ class RMQTransport:
         closed unexpectedly. Since it is unexpected, we will reconnect to
         RabbitMQ if it disconnects.
 
-        :param pika.connection.Connection _unused_connection: The closed connection obj
+        :param pika.connection.Connection _connection: The closed connection obj
         :param Exception reason: exception representing reason for loss of
             connection.
 

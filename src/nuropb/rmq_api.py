@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Any, Union, List, Awaitable, Set, Callable
+from typing import Dict, Optional, Any, Union, Awaitable, Callable
 from uuid import uuid4
 import logging
 from asyncio import Future
@@ -301,7 +301,8 @@ class RMQAPI(NuropbInterface):
         context: dict
             The context around gent generation, example content includes:
                 - user_id: str  # a unique user identifier or token of the user that made the request
-                - correlation_id: str  # a unique identifier of the request used to correlate the response to the request
+                - correlation_id: str  # a unique identifier of the request used to correlate the response
+                                       # to the request
                                        # or trace the request over the network (e.g. a uuid4 hex string)
                 - service: str
                 - method: str

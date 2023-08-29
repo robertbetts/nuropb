@@ -71,6 +71,7 @@ class TestInterface(NuropbInterface):
         context: Dict[str, Any],
         ttl: Optional[int] = None,
         trace_id: Optional[str] = None,
+        rpc_response: bool = True,
     ) -> ResponsePayloadDict:
         """request: sends a request to the underlying transport and waits for the response
         :param service: the service to send the request to
@@ -79,6 +80,8 @@ class TestInterface(NuropbInterface):
         :param context: additional arguments that represent the context attached to the request.
         :param ttl: the time to live of the request
         :param trace_id: the trace id
+        :param rpc_response: if True, the response is expected to be a RPC response, otherwise it is expected to be an
+        event
         :return: ResponsePayloadDict
         """
         result = f"expected response from {service}.{method}"

@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, Awaitable, Dict, Union, Type
+from typing import Any, Awaitable, Dict, Union
 import time
 import logging
 
@@ -10,11 +10,6 @@ from nuropb.interface import (
     CommandPayloadDict,
     ResponsePayloadDict,
     NuropbHandlingError,
-    NuropbDeprecatedError,
-    NuropbAuthenticationError,
-    NuropbAuthorizationError,
-    NuropbValidationError,
-    PayloadDict,
     NuropbException,
 )
 

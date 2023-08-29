@@ -148,7 +148,7 @@ def nack_message(
     """nack the message and requeue it, there was a problem with this instance processing the message"""
     if channel is None or not channel.is_open:
         raise NuropbTransportError(
-            message=f"Unable to nack and requeue message, RMQ channel closed",
+            message="Unable to nack and requeue message, RMQ channel closed",
             lifecycle="service-handle",
             payload=mesg,
             exception=error,
@@ -169,7 +169,7 @@ def reject_message(
     """If the message is not a request, then reject the message and move on"""
     if channel is None or not channel.is_open:
         raise NuropbTransportError(
-            message=f"unable to reject message, RMQ channel closed",
+            message="unable to reject message, RMQ channel closed",
             lifecycle="service-handle",
             payload=mesg,
             exception=error,
@@ -190,7 +190,7 @@ def ack_message(
     """ack the message"""
     if channel is None or not channel.is_open:
         raise NuropbTransportError(
-            message=f"Unable to ack message, RMQ channel closed",
+            message="Unable to ack message, RMQ channel closed",
             lifecycle="service-ack",
             payload=mesg,
             exception=error,
@@ -210,7 +210,7 @@ def get_virtual_hosts(api_url: str, vhost_url: str) -> Any | None:
     """
     url_parts = urlparse(vhost_url)
     vhost = url_parts.path[1:] if url_parts.path.startswith("/") else url_parts.path
-    api_url += f"/vhosts"
+    api_url += "/vhosts"
     headers: Dict[str, Any] = {}
     response = requests.get(
         url=api_url,
