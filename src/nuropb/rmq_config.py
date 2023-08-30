@@ -23,11 +23,12 @@ from typing import Dict, Any, Awaitable, Literal, Type
 
 from etcd3 import Client as EtcdClient
 from etcd3.stateful.lease import Lease
-from etcd3.stateful.watch import Watcher
+from etcd3.stateful.watch import Watcher, Event
 from etcd3.stateful.transaction import Txn
 
 from nuropb.rmq_api import RMQAPI
 from nuropb.rmq_lib import configure_nuropb_rmq, create_virtual_host
+from nuropb.rmq_transport import RMQTransport
 
 logger = logging.getLogger()
 
@@ -36,8 +37,8 @@ LEASE_TTL = 15
 
 
 class ServiceConfigState:
-    """ ServiceConfigState represents the state of the service configuration.
-    """
+    """ServiceConfigState represents the state of the service configuration."""
+
     service_name: str
     """ service_name: the name of the service. """
     leader_id: str
@@ -51,27 +52,27 @@ class ServiceConfigState:
     hw_mark: int
     """ trigger for when to start or stop service instances. """
 
-    _etc_client: type['etcd3.client.Client']
+    _etc_client: EtcdClient
     """ _etc_client: the etcd3 client used to communicate with the etcd3 server. """
 
 
 ContainerRunningState = Literal[
-    'startup',
-    'startup-leader-election',
-    'startup-leader-decided',
-    'taking-leadership',
-    'running-leader',
-    'running-follower',
-    'stopping',
-    'shutdown',
+    "startup",
+    "startup-leader-election",
+    "startup-leader-decided",
+    "taking-leadership",
+    "running-leader",
+    "running-follower",
+    "stopping",
+    "shutdown",
 ]
 
 
 class ServiceContainer(ServiceConfigState):
-    _instance: Type[RMQAPI]
+    _instance: RMQAPI
     _rmq_api_url: str
     _service_name: str
-    _transport: object
+    _transport: RMQTransport
     _running_state: ContainerRunningState
     _rmq_config_ok: bool
 
@@ -87,12 +88,12 @@ class ServiceContainer(ServiceConfigState):
     _container_running_future: Awaitable[bool] | None
     _container_shutdown_future: Awaitable[bool] | None
 
-    def __init__(self, rmq_api_url: str, instance: object, etcd_config: Dict[str, Any]):
-        """ __init__: initializes the service container.
+    def __init__(self, rmq_api_url: str, instance: RMQAPI, etcd_config: Dict[str, Any]):
+        """__init__: initializes the service container.
         :param instance: the service instance.
         :param etcd_config: the etcd3 configuration.
         """
-        self._running_state = 'startup'
+        self._running_state = "startup"
         self._container_running_future = None
         self._container_shutdown_future = None
         self._rmq_config_ok = False
@@ -107,7 +108,11 @@ class ServiceContainer(ServiceConfigState):
         self._etcd_prefix = f"/nuropb/{self._service_name}"
         self._etcd_config = etcd_config
 
-        logging.info("Starting the service container for {}:{}".format(self._service_name, self._instance_id))
+        logging.info(
+            "Starting the service container for {}:{}".format(
+                self._service_name, self._instance_id
+            )
+        )
 
         """ asyncio NOTE: the etcd3 client is initialized as an asyncio task and will run
         once __init__ has completed and there us a running asyncio event loop.
@@ -115,21 +120,20 @@ class ServiceContainer(ServiceConfigState):
         task = asyncio.create_task(self.init_etcd(on_startup=True))
         task.add_done_callback(lambda _: None)
 
-
     @property
     def running_state(self) -> ContainerRunningState:
-        """ running_state: the current running state of the service container. """
+        """running_state: the current running state of the service container."""
         return self._running_state
 
     @running_state.setter
     def running_state(self, value: ContainerRunningState) -> None:
-        """ running_state: updating the current running state of the service container. """
+        """running_state: updating the current running state of the service container."""
         if value != self._running_state:
             logging.info(f"running_state change: {self._running_state} -> {value}")
             self._running_state = value
 
-    async def init_etcd(self, on_startup: bool = True):
-        """ init_etcd: initialises the etcd client and connection.
+    async def init_etcd(self, on_startup: bool = True) -> bool:
+        """init_etcd: initialises the etcd client and connection.
         Not a fan of the threading started here, when defining a watcher and calling
         runDaemon(). It would be way nicer to have a fully asynchronous etcd3 client.
         There is also threading used for the lease keepalive.
@@ -143,34 +147,23 @@ class ServiceContainer(ServiceConfigState):
         """
         if on_startup:
             logger.info("Initiating the etcd connection")
-            self.running_state = 'startup-leader-election'
+            self.running_state = "startup-leader-election"
         else:
             logger.info("Re-initiating the etcd connection")
-
-            """ Check for a potential connection blip, or where this method is called
-            while there is a valid etcd connection. If there is an exception raised
-            or is_connected() returns False, then continue.
-            """
-            try:
-                if self._etcd_client and self._etcd_client.is_connected():
-                    logger.info("etcd client is already connected")
-                    return
-            except Exception: # noqa
-                pass
 
             """ Potential the exceptions raised while stopping the watcher or expiring the lease
             are deliberately ignored. 
             """
             try:
-                if self._etcd_watcher and self._etcd_watcher.isRunning():
+                if self._etcd_watcher and self._etcd_watcher.watching:
                     self._etcd_watcher.stop()
             except Exception:  # noqa
                 pass
             try:
-                if self._etcd_lease:
+                if self._etcd_lease and self._etcd_lease.keeping:
                     self._etcd_lease.cancel_keepalive()
                     self._etcd_lease.revoke()
-            except Exception: # noqa
+            except Exception:  # noqa
                 pass
 
         while True:
@@ -179,9 +172,15 @@ class ServiceContainer(ServiceConfigState):
                 self._etcd_lease = self._etcd_client.Lease(LEASE_TTL)
                 self._etcd_lease.grant()
                 self._etcd_lease.keepalive()
-                logger.info(f"etcd lease {self._etcd_lease.ID} created, with ttl of {self._etcd_lease.ttl()}")
-                self._etcd_watcher = self._etcd_client.Watcher(all=True, progress_notify=True, prev_kv=True)
-                self._etcd_watcher.onEvent(f"{self._etcd_prefix}/.*", self.etcd_event_handler)
+                logger.info(
+                    f"etcd lease {self._etcd_lease.ID} created, with ttl of {self._etcd_lease.ttl()}"
+                )
+                self._etcd_watcher = self._etcd_client.Watcher(
+                    all=True, progress_notify=True, prev_kv=True
+                )
+                self._etcd_watcher.onEvent(
+                    f"{self._etcd_prefix}/.*", self.etcd_event_handler
+                )
                 self._etcd_watcher.runDaemon()
                 self.nominate_as_leader()
                 return True
@@ -196,7 +195,7 @@ class ServiceContainer(ServiceConfigState):
         return False
 
     def nominate_as_leader(self) -> None:
-        """ nominate_as_leader: nominates the service instance as the leader. if first to secure a lease
+        """nominate_as_leader: nominates the service instance as the leader. if first to secure a lease
         on the leader key, then the instance is the leader. Otherwise, the instance is a follower.
 
         Handling the following scenarios:
@@ -219,7 +218,9 @@ class ServiceContainer(ServiceConfigState):
         """
         try:
             if self._instance.client_only:
-                logger.info("Instance configured as a client only, no leader election required")
+                logger.info(
+                    "Instance configured as a client only, no leader election required"
+                )
                 self._is_leader = False
                 self.running_state = "startup-leader-decided"
                 return
@@ -239,12 +240,13 @@ class ServiceContainer(ServiceConfigState):
                 logger.debug(f"nomination of self:{self._instance_id} succeeded")
                 self._leader_reference = self._instance_id
             else:
-                """ Unable to secure the leader key lease, check for the assigned leader.
-                """
+                """Unable to secure the leader key lease, check for the assigned leader."""
                 if len(response.responses) >= 1:
                     value = response.responses[0].response_range.kvs[0].value.decode()
                     if value == self._instance_id:
-                        raise ValueError("Unable to secure the leader key lease, but the leader is self")
+                        raise ValueError(
+                            "Unable to secure the leader key lease, but the leader is self"
+                        )
                     self._leader_reference = value
 
             is_leader = self._leader_reference == self._instance_id
@@ -255,7 +257,9 @@ class ServiceContainer(ServiceConfigState):
                 if is_leader:
                     logger.critical("Elected as leader")
                 else:
-                    logger.info(f'Instance configured as a follower. Leader instance_id: {self._leader_reference}')
+                    logger.info(
+                        f"Instance configured as a follower. Leader instance_id: {self._leader_reference}"
+                    )
                 self._is_leader = is_leader
                 self.running_state = "startup-leader-decided"
                 return
@@ -263,28 +267,28 @@ class ServiceContainer(ServiceConfigState):
             """ POST STARTUP LEADER ELECTION
             """
             if is_leader == self._is_leader:
-                """ no change to self._is_leader and continue as before. In this case, an update to the
+                """no change to self._is_leader and continue as before. In this case, an update to the
                 leadership has no impact on this service instance.
                 """
                 return
 
             if is_leader and self._is_leader is False:
-                """ Elected as leader, handle the transition to leader
-                """
-                logger.critical("Post-startup election as leader, handle the transition")
+                """Elected as leader, handle the transition to leader"""
+                logger.critical(
+                    "Post-startup election as leader, handle the transition"
+                )
                 self.running_state = "taking-leadership"
                 self._is_leader = is_leader
                 # TODO: handle the transition from follower to leader
                 return
             else:
-                """ Transition from leader to follower
-                """
+                """Transition from leader to follower"""
                 logger.critical("Post startup transition from leader to follower")
                 self._is_leader = is_leader
                 # TODO: handle the transition from leader to follower
 
         except Exception as e:
-            """ Error Likely to be due to etcd server not being available. In this case do nothing
+            """Error Likely to be due to etcd server not being available. In this case do nothing
             to the leadership state and wait for the next etcd event or reconnection attempt.
             """
             logger.error(f"Error during leader nomination: {e}")
@@ -294,7 +298,7 @@ class ServiceContainer(ServiceConfigState):
             task.add_done_callback(lambda _: None)
 
     def update_etcd_service_property(self, key: str, value: Any) -> bool:
-        """ update_etcd_service_property: updates the etcd3 service property.
+        """update_etcd_service_property: updates the etcd3 service property.
 
         The use of this method is restricted to the service leader
 
@@ -313,11 +317,11 @@ class ServiceContainer(ServiceConfigState):
         return False
 
     def check_and_configure_rmq(self) -> None:
-        """ check_and_configure_rmq: checks that the RMQ Exchange and Queues are correctly
+        """check_and_configure_rmq: checks that the RMQ Exchange and Queues are correctly
         configured. If not, then the NuroPb RMQ configuration for self.service_name is applied.
         :return: None
         """
-        amqp_url = self._transport.amqp_url
+        amqp_url: str = self._transport.amqp_url
         create_virtual_host(self._rmq_api_url, amqp_url)
         transport_settings = self._transport.rmq_configuration
         configure_nuropb_rmq(
@@ -333,15 +337,13 @@ class ServiceContainer(ServiceConfigState):
         )
         self._rmq_config_ok = True
 
-    def etcd_event_handler(self, event) -> None:
-        """ etc_event_handler: handles the etcd3 events.
-        """
+    def etcd_event_handler(self, event: Event) -> None:
+        """etc_event_handler: handles the etcd3 events."""
         logger.critical(f"WATCHER: key change {event.key}: {event.value}")
         event_key = event.key.decode()
         # logger.info(f"{event_key} - {self._etcd_prefix}/leader")
         if event_key == f"{self._etcd_prefix}/leader":
-            """ Only nominate for a new leader when the leader key is reset to None
-            """
+            """Only nominate for a new leader when the leader key is reset to None"""
             new_reference = event.value.decode() if event.value else None
             # logger.info(f"new_reference: {new_reference}")
             if new_reference is None:
@@ -351,7 +353,7 @@ class ServiceContainer(ServiceConfigState):
             self._rmq_config_ok = event.value.decode() == "True"
 
     async def startup_steps(self) -> None:
-        """ startup_steps: the startup steps for the service container.
+        """startup_steps: the startup steps for the service container.
         - wait for the leader to be elected.
         - check and configure the RMQ Exchange and Queues.
         - connect the service instance to RMQ.
@@ -385,7 +387,7 @@ class ServiceContainer(ServiceConfigState):
         self.running_state = "running-leader" if self._is_leader else "running-follower"
 
     async def start(self) -> None:
-        """ start: starts the container service instance.
+        """start: starts the container service instance.
         - primary entry point to start the service container.
         :return: None
         """
@@ -399,7 +401,7 @@ class ServiceContainer(ServiceConfigState):
                 logger.exception(f"Container running future runtime exception: {err}")
 
     async def stop(self) -> None:
-        """ stop: stops the container service instance.
+        """stop: stops the container service instance.
         - primary entry point to stop the service container.
         :return: None
         """

@@ -9,7 +9,7 @@ import requests
 import pika
 from pika.channel import Channel
 
-from nuropb.interface import PayloadDict, NuropbTransportError
+from nuropb.interface import PayloadDict, NuropbTransportError, NuropbLifecycleState
 
 logger = logging.getLogger()
 
@@ -30,14 +30,16 @@ def rmq_api_url(
     return f"{scheme}://{username}:{password}@{host}:{port}/api"
 
 
-def management_api_session(
-        scheme: str, host: str, port: str | int,
-        username: Optional[str] = None,
-        password: Optional[str] = None,
-        bearer_token: Optional[str] = None,
-        verify: bool = False,
-        **headers
-        ) -> requests.Session:
+def management_api_session_info(
+    scheme: str,
+    host: str,
+    port: str | int,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+    bearer_token: Optional[str] = None,
+    verify: bool = False,
+    **headers: Any,
+) -> Dict[str, Any]:
     """Creates a requests session for connecting to RabbitMQ management API
     :param scheme: http or https
     :param host: the host name or ip address of the RabbitMQ server
@@ -49,15 +51,16 @@ def management_api_session(
     :return: a requests session
     """
     api_url = rmq_api_url(scheme, host, port, username, password)
-    headers = headers or {}
     if bearer_token:
         headers["Authorization"] = f"Bearer {bearer_token}"
     headers["Content-Type"] = "application/json"
     session = requests.Session()
     session.headers = headers
     session.verify = verify
-    session.url = api_url
-    return session
+    return {
+        "api_url": api_url,
+        "headers": headers,
+    }
 
 
 @contextmanager
@@ -161,7 +164,9 @@ def configure_nuropb_rmq(
         )
         logger.info(f"Declaring the dead letter queue: {dl_queue}")
         channel.queue_declare(queue=dl_queue)
-        logger.info(f"Binding the dead letter queue: {dl_queue} to the dead letter exchange: {dl_exchange}")
+        logger.info(
+            f"Binding the dead letter queue: {dl_queue} to the dead letter exchange: {dl_exchange}"
+        )
         channel.queue_bind(dl_queue, dl_exchange)
 
         logger.info(f"Declaring the events exchange: {events_exchange}")
@@ -176,7 +181,9 @@ def configure_nuropb_rmq(
             exchange_type="direct",
             durable=True,
         )
-        logger.info(f"Declaring the request queue: {request_queue} to the rpc exchange: {rpc_exchange}")
+        logger.info(
+            f"Declaring the request queue: {request_queue} to the rpc exchange: {rpc_exchange}"
+        )
         requests_queue_config = {
             "durable": True,
             "auto_delete": False,
@@ -217,12 +224,13 @@ def nack_message(
     properties: pika.spec.BasicProperties,
     mesg: PayloadDict | None,
     error: Exception | None = None,
-    lifecycle: str | None = "service-handle",
+    lifecycle: NuropbLifecycleState | None = None,
 ) -> None:
-    """ nack_message: nack the message and requeue it, there was likely a recoverable problem with this instance
+    """nack_message: nack the message and requeue it, there was likely a recoverable problem with this instance
     while processing the message
     """
     if channel is None or not channel.is_open:
+        lifecycle = "service-handle" if lifecycle is None else lifecycle
         raise NuropbTransportError(
             message="Unable to nack and requeue message, RMQ channel closed",
             lifecycle=lifecycle,
@@ -241,10 +249,11 @@ def reject_message(
     properties: pika.spec.BasicProperties,
     mesg: PayloadDict | None,
     error: Exception | None = None,
-    lifecycle: str | None = "service-handle",
+    lifecycle: NuropbLifecycleState | None = None,
 ) -> None:
     """reject_message: If the message is not a request, then reject the message and move on"""
     if channel is None or not channel.is_open:
+        lifecycle = "service-handle" if lifecycle is None else lifecycle
         raise NuropbTransportError(
             message="unable to reject message, RMQ channel closed",
             lifecycle=lifecycle,
@@ -263,10 +272,11 @@ def ack_message(
     properties: pika.spec.BasicProperties,
     mesg: PayloadDict | None,
     error: Exception | None = None,
-    lifecycle: str | None = "service-handle",
+    lifecycle: NuropbLifecycleState | None = None,
 ) -> None:
     """ack_message: ack the message"""
     if channel is None or not channel.is_open:
+        lifecycle = "service-handle" if lifecycle is None else lifecycle
         raise NuropbTransportError(
             message="Unable to ack message, RMQ channel closed",
             lifecycle=lifecycle,

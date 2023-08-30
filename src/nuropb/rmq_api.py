@@ -1,4 +1,5 @@
 from typing import Dict, Optional, Any, Union, Awaitable, Callable
+from typing import Dict, Optional, Any, Union, Awaitable, Callable
 from uuid import uuid4
 import logging
 from asyncio import Future
@@ -9,7 +10,8 @@ from nuropb.interface import (
     PayloadDict,
     ResponsePayloadDict,
     RequestPayloadDict,
-    EventPayloadDict, AcknowledgeActions,
+    EventPayloadDict,
+    AcknowledgeActions,
 )
 from nuropb.rmq_transport import RMQTransport, encode_payload
 
@@ -63,13 +65,17 @@ class RMQAPI(NuropbInterface):
         self._events_exchange = self._transport.events_exchange
 
     @property
+    def service_name(self) -> str:
+        """service_name: returns the service_name of the underlying transport"""
+        return self._transport.service_name
+
+    @property
     def is_leader(self) -> bool:
         return self._transport.is_leader
 
     @property
     def client_only(self) -> bool:
-        """client_only: returns the client_only status of the underlying transport
-        """
+        """client_only: returns the client_only status of the underlying transport"""
         return self._client_only
 
     @property
@@ -99,19 +105,19 @@ class RMQAPI(NuropbInterface):
         await self._transport.stop()
 
     def receive_transport_message(
-        self, message: PayloadDict, acknowledge_function: Optional[Callable[[AcknowledgeActions], None]]
+        self,
+        message: PayloadDict,
+        acknowledge_function: Optional[Callable[[AcknowledgeActions], None]],
     ) -> None:
         """_received_message_over_transport: handles a messages received from the transport and routes it to the
             appropriate handler
         :return: None
         """
-        if message["tag"] in ("request", "command"):
+        if message["tag"] == "request" or message["tag"] == "command":
             logger.debug(
-                "Received %s: %s.%s",
-                message["tag"],
-                message["service"],
-                message["method"],
+                f"Received {message['tag']}: {message['service']}.{message['method']}"
             )
+
             # TODO: Implement request and command execution here
             """ Echo sample response
             """
@@ -357,7 +363,8 @@ class RMQAPI(NuropbInterface):
         routing_key = topic
         logger.debug(
             "Sending event message: (%s - %s) (%s - %s)",
-            correlation_id, trace_id,
+            correlation_id,
+            trace_id,
             self._transport.rpc_exchange,
             routing_key,
         )

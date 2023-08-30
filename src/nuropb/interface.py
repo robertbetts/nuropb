@@ -61,6 +61,7 @@ class CommandPayloadDict(BasePayloadDict):
     service: str
     method: str
     params: Dict[str, Any]
+    reply_to: str
 
 
 class EventPayloadDict(BasePayloadDict):
@@ -81,6 +82,7 @@ PayloadDict = Union[
     EventPayloadDict,
     UnknownPayloadDict,
 ]
+
 
 AcknowledgeActions = Literal["ack", "nack", "reject"]
 

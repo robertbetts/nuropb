@@ -134,6 +134,7 @@ def decode_rmq_message(
             "service": payload["service"],
             "method": payload["method"],
             "params": payload["params"],
+            "reply_to": properties.reply_to,
         }
     else:
         message_inputs = {
@@ -400,9 +401,11 @@ class RMQTransport:
             on_close_callback=self.on_connection_closed,
         )
         # TODO: overwrite the pika client properties with our own, see top of module too
-        connection._client_properties.update({
-            "product": "NuroPb Distributed RPC-Event Library",
-        })
+        connection._client_properties.update(
+            {
+                "product": "NuroPb Distributed RPC-Event Library",
+            }
+        )
         self._connection = connection
 
         return self._connected_future
