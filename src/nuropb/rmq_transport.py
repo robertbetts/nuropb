@@ -1,11 +1,11 @@
 import json
 import logging
 import functools
-import re
-from typing import List, Set, Optional, Any, Dict, Awaitable, cast, Literal
+from typing import List, Set, Optional, Any, Dict, Awaitable, cast, Literal, TypedDict
 import asyncio
 
 import pika
+from pika import connection
 from pika.adapters.asyncio_connection import AsyncioConnection
 from pika.channel import Channel
 from pika.exceptions import ChannelClosedByBroker
@@ -24,19 +24,32 @@ from nuropb.interface import (
     NuropbAuthorizationError,
 )
 from nuropb.rmq_lib import ack_message, nack_message, reject_message
+from nuropb.utils import obfuscate_credentials
+
+
+class RabbitMQConfiguration(TypedDict):
+    rpc_exchange: str
+    events_exchange: str
+    dl_exchange: str
+    dl_queue: str
+    request_queue: str
+    response_queue: str
+    rpc_bindings: List[str]
+    event_bindings: List[str]
+    default_ttl: int
+    client_only: bool
 
 
 logger = logging.getLogger()
-# The length of time to wait when shutting down consumers.
+
+connection.PRODUCT = "NuroPb Distributed RPC-Event Library"
+""" TODO: configure the RMQ client connection attributes in the pika client properties.
+See related TODO below in this module
+"""
+
 CONSUMER_CLOSED_WAIT_TIMEOUT = 10
-
-
-def obfuscate_secret(input_string: str) -> str:
-    pattern = r"(:.*?@)"
-    result = re.sub(
-        pattern, lambda match: ":" + "x" * (len(match.group(0)) - 2) + "@", input_string
-    )
-    return result
+""" The wait when shutting down consumers before closing the connection
+"""
 
 
 def encode_payload(payload: PayloadDict, payload_type: str = "json") -> bytes:
@@ -271,8 +284,17 @@ class RMQTransport:
         return self._instance_id
 
     @property
+    def amqp_url(self) -> str:
+        return self._amqp_url
+
+    @property
     def is_leader(self) -> bool:
         return self._is_leader
+
+    @is_leader.setter
+    def is_leader(self, value: bool) -> None:
+        """is_leader: set the transport's leader status"""
+        self._is_leader = value
 
     @property
     def connected(self) -> bool:
@@ -301,6 +323,24 @@ class RMQTransport:
         :return: str
         """
         return self._response_queue
+
+    @property
+    def rmq_configuration(self) -> Dict[str, Any]:
+        """rmq_configuration: returns the RabbitMQ configuration
+        :return: Dict[str, Any]
+        """
+        return {
+            "rpc_exchange": self._rpc_exchange,
+            "events_exchange": self._events_exchange,
+            "dl_exchange": self._dl_exchange,
+            "dl_queue": self._dl_queue,
+            "request_queue": self._request_queue,
+            "response_queue": self._response_queue,
+            "rpc_bindings": list(self._rpc_bindings),
+            "event_bindings": list(self._event_bindings),
+            "default_ttl": self._default_ttl,
+            "client_only": self._client_only,
+        }
 
     async def start(self) -> None:
         """Start the transport by connecting to RabbitMQ"""
@@ -344,15 +384,25 @@ class RMQTransport:
         if self._connected_future is not None and not self._connected_future.done():
             raise RuntimeError("Already connecting to RabbitMQ")
 
-        logger.info("Connecting to %s", obfuscate_secret(self._amqp_url))
+        logger.info("Connecting to %s", obfuscate_credentials(self._amqp_url))
 
         self._connected_future = asyncio.Future()
+        client_properties = {
+            "service_name": self._service_name,
+            "instance_id": self._instance_id,
+            "client_only": self._client_only,
+        }
+
         connection = AsyncioConnection(
             parameters=pika.URLParameters(self._amqp_url),
             on_open_callback=self.on_connection_open,
             on_open_error_callback=self.on_connection_open_error,
             on_close_callback=self.on_connection_closed,
         )
+        # TODO: overwrite the pika client properties with our own, see top of module too
+        connection._client_properties.update({
+            "product": "NuroPb Distributed RPC-Event Library",
+        })
         self._connection = connection
 
         return self._connected_future
@@ -472,7 +522,7 @@ RabbitMQ channel closed by broker with reply_code: {reason.reply_code} and reply
 This is usually caused by a misconfiguration of the RabbitMQ broker.
 Please check the RabbitMQ broker configuration and restart the service:
 
-RabbitMQ url: {obfuscate_secret(self._amqp_url)}
+RabbitMQ url: {obfuscate_credentials(self._amqp_url)}
 
 Check that the following exchanges, queues and bindings exist:
     Exchange: {self._rpc_exchange}

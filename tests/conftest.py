@@ -9,6 +9,7 @@ from nuropb.interface import PayloadDict
 from nuropb.rmq_lib import amqp_url, rmq_api_url, create_virtual_host, delete_virtual_host, configure_nuropb_rmq
 from nuropb.rmq_transport import RMQTransport
 
+logging.getLogger("pika").setLevel(logging.WARNING)
 
 @pytest.fixture(scope="session")
 def test_settings():

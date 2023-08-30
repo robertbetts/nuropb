@@ -37,6 +37,10 @@ class RMQAPI(NuropbInterface):
         transport_settings: Optional[Dict[str, Any]] = None,
     ):
         """RMQAPI: A NuropbInterface implementation that uses RabbitMQ as the underlying transport."""
+
+        self._service_name = service_name
+        self._instance_id = instance_id
+
         transport_settings = {} if transport_settings is None else transport_settings
         default_ttl = transport_settings.get("default_ttl", None)
 
@@ -63,11 +67,24 @@ class RMQAPI(NuropbInterface):
         return self._transport.is_leader
 
     @property
+    def client_only(self) -> bool:
+        """client_only: returns the client_only status of the underlying transport
+        """
+        return self._client_only
+
+    @property
     def connected(self) -> bool:
         """connected: returns the connection status of the underlying transport
         :return: bool
         """
         return self._transport.connected
+
+    @property
+    def transport(self) -> RMQTransport:
+        """transport: returns the underlying transport
+        :return: RMQTransport
+        """
+        return self._transport
 
     async def connect(self) -> None:
         """connect: connects to the underlying transport
@@ -303,7 +320,7 @@ class RMQAPI(NuropbInterface):
                 - user_id: str  # a unique user identifier or token of the user that made the request
                 - correlation_id: str  # a unique identifier of the request used to correlate the response
                                        # to the request
-                                       # or trace the request over the network (e.g. a uuid4 hex string)
+                                       # or trace the request over the network (e.g. an uuid4 hex string)
                 - service: str
                 - method: str
 
@@ -313,7 +330,7 @@ class RMQAPI(NuropbInterface):
             defaulted to 0 (no expiry) for events
 
         trace_id: str optional
-            an identifier to trace the request over the network (e.g. a uuid4 hex string)
+            an identifier to trace the request over the network (e.g. an uuid4 hex string)
 
         """
         correlation_id = uuid4().hex
@@ -340,7 +357,7 @@ class RMQAPI(NuropbInterface):
         routing_key = topic
         logger.debug(
             "Sending event message: (%s - %s) (%s - %s)",
-            correlation_id,
+            correlation_id, trace_id,
             self._transport.rpc_exchange,
             routing_key,
         )

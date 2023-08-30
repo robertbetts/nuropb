@@ -1,7 +1,7 @@
 """ RabbitMQ Utility library for NuroPb
 """
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from urllib.parse import urlparse
 from contextlib import contextmanager
 
@@ -17,15 +17,47 @@ logger = logging.getLogger()
 def amqp_url(
     host: str, port: str | int, username: str, password: str, vhost: str
 ) -> str:
-    """Create an AMQP URL for connecting to RabbitMQ"""
+    """Creates an AMQP URL for connecting to RabbitMQ"""
     return f"amqp://{username}:{password}@{host}:{port}/{vhost}"
 
 
 def rmq_api_url(
-    scheme: str, host: str, port: str | int, username: str, password: str
+    scheme: str, host: str, port: str | int, username: str | None, password: str | None
 ) -> str:
-    """Create an API URL for connecting to RabbitMQ"""
+    """Creates an HTTP URL for connecting to RabbitMQ management API"""
+    if username is None or password is None:
+        return f"{scheme}://{host}:{port}/api"
     return f"{scheme}://{username}:{password}@{host}:{port}/api"
+
+
+def management_api_session(
+        scheme: str, host: str, port: str | int,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        bearer_token: Optional[str] = None,
+        verify: bool = False,
+        **headers
+        ) -> requests.Session:
+    """Creates a requests session for connecting to RabbitMQ management API
+    :param scheme: http or https
+    :param host: the host name or ip address of the RabbitMQ server
+    :param port: the port number of the RabbitMQ server
+    :param username: the username to use for authentication
+    :param password: the password to use for authentication
+    :param bearer_token: the bearer token to use for authentication
+    :param verify: whether to verify the SSL certificate
+    :return: a requests session
+    """
+    api_url = rmq_api_url(scheme, host, port, username, password)
+    headers = headers or {}
+    if bearer_token:
+        headers["Authorization"] = f"Bearer {bearer_token}"
+    headers["Content-Type"] = "application/json"
+    session = requests.Session()
+    session.headers = headers
+    session.verify = verify
+    session.url = api_url
+    return session
 
 
 @contextmanager
@@ -57,16 +89,44 @@ def configure_nuropb_rmq(
     request_queue: str,
     rpc_bindings: List[str],
     event_bindings: List[str],
+    **kwargs: Any,
 ) -> bool:
     """Configure the RabbitMQ broker for this transport.
 
-    Calls to this function are idempotent, except for previously named exchanges, queues,
-    and declared bindings all of which will not be removed. These will have to be manually
-    removed from the broker.
+    Calls to this function are IDEMPOTENT. However, previously named exchanges, queues,
+    and declared bindings are not be removed. These will have to be done manually as part
+    of broker housekeeping. This is to prevent accidental removal of queues and exchanges.
+    It is safe to call this function multiple times and while other services are running,
+    as it will not re-declare exchanges, queues, or bindings that already exist.
 
-    The response queue is not durable, and is auto-deleted when the connection is closed.
-    This is because the response queue is only used for RPC responses, and we don't want
-    to keep stale responses around.
+    PRODUCTION AUTHORISATION NOTE: The RabbitMQ user used to connect to the broker must
+    have the following permissions:
+    - configure: .*
+    - write: .*
+    - read: .*
+    - access to the vhost
+    Client only applications and services should not have configuration permissions. For
+    completeness, there may be specific implementation need to for a client only services
+    to register service queue bindings, for example a client only service that is also a
+    gateway or proxy service. In this case, the treating it as a service is the correct
+    approach.
+
+    Settings for Exchange and default dead letter configuration apply to all services that
+    use the same RabbitMQ broker. The rpc and event bindings are exclusive to the service,
+    and are not shared with other services.
+
+    The response queues are not durable, and are auto-deleted when the connections close.
+    This approach is taken as response queues are only used for RPC responses, and there
+    is no need to keep and have to handle stale responses.
+
+    There is experimental work underway using etcd to manage the runtime configuration of
+    a service leader and service followers. This will allow for persistent response queues
+    and other configuration settings to be shared across multiple instances of the same
+    service. This is not yet ready for production use.
+    Experimentation scope:
+    - service leader election
+    - named instances of a service each with their own persistent response queue
+    - Notification and handling of dead letter messages relating to a service
 
     :param str service_name: The name of the service, being configured for
     :param str rmq_url: The URL of the RabbitMQ broker
@@ -77,35 +137,46 @@ def configure_nuropb_rmq(
     :param str request_queue: The name of the requests queue
     :param List[str] rpc_bindings: The list of RPC bindings
     :param List[str] event_bindings: The list of events bindings
+    :param kwargs: Additional keyword argument overflow from the transport settings.
+        - client_only: bool - True if this is a client only service, False otherwise
     :return: True if the RabbitMQ broker was configured successfully
     """
+    if kwargs.get("client_only", False):
+        logger.info("Client only service, not configuring RMQ")
+        return True
+
     if len(rpc_bindings) == 0 or service_name not in rpc_bindings:
         rpc_bindings.append(service_name)
 
     with blocking_rabbitmq_channel(rmq_url) as channel:
-        channel.exchange_declare(
-            exchange=events_exchange,
-            exchange_type="topic",
-            durable=True,
-        )
-
-        channel.exchange_declare(
-            exchange=rpc_exchange,
-            exchange_type="direct",
-            durable=True,
-        )
-
-        """ Setting up dead letter handling - all requests are automatically sent to a dead letter queue."""
+        logger.info(f"Declaring the dead letter exchange: {dl_exchange}")
+        """ Setting up dead letter handling - all requests are automatically sent to a dead letter queue.
+        for all services. This is to ensure that no messages are lost, and can be inspected for debugging
+        purposes. The dead letter queue is durable, and will survive a broker restart.
+        """
         channel.exchange_declare(
             exchange=dl_exchange,
             exchange_type="fanout",
             durable=True,
         )
-
+        logger.info(f"Declaring the dead letter queue: {dl_queue}")
         channel.queue_declare(queue=dl_queue)
+        logger.info(f"Binding the dead letter queue: {dl_queue} to the dead letter exchange: {dl_exchange}")
         channel.queue_bind(dl_queue, dl_exchange)
 
-        # Declare the request queue for this transport
+        logger.info(f"Declaring the events exchange: {events_exchange}")
+        channel.exchange_declare(
+            exchange=events_exchange,
+            exchange_type="topic",
+            durable=True,
+        )
+        logger.info(f"Declaring the rpc exchange: {rpc_exchange}")
+        channel.exchange_declare(
+            exchange=rpc_exchange,
+            exchange_type="direct",
+            durable=True,
+        )
+        logger.info(f"Declaring the request queue: {request_queue} to the rpc exchange: {rpc_exchange}")
         requests_queue_config = {
             "durable": True,
             "auto_delete": False,
@@ -113,11 +184,13 @@ def configure_nuropb_rmq(
         }
         channel.queue_declare(queue=request_queue, **requests_queue_config)
 
-        """ This NOTE is here for reference, response queue is not durable by default
-        and are the responsibility of the client to declare on startup. 
-        The response queue is not durable, and is auto-deleted when the connection is 
-        closed.This is because the response queue is only used for RPC responses, and we 
-        don't want to keep stale responses around.
+        """ This NOTE is here for reference only. A response queue is not durable by default
+        and is the responsibility of the client/service follower to declare on startup. 
+        As the response queue is not durable, it is auto-deleted when the connection is closed. 
+        This is because the response queue is only used for RPC responses, and we don't want to 
+        keep stale responses around. See the notes above about etcd leader/follower configuration
+        for more information.
+        
         responses_queue_config = {"durable": False, "auto_delete": True}
         """
 
@@ -144,12 +217,15 @@ def nack_message(
     properties: pika.spec.BasicProperties,
     mesg: PayloadDict | None,
     error: Exception | None = None,
+    lifecycle: str | None = "service-handle",
 ) -> None:
-    """nack the message and requeue it, there was a problem with this instance processing the message"""
+    """ nack_message: nack the message and requeue it, there was likely a recoverable problem with this instance
+    while processing the message
+    """
     if channel is None or not channel.is_open:
         raise NuropbTransportError(
             message="Unable to nack and requeue message, RMQ channel closed",
-            lifecycle="service-handle",
+            lifecycle=lifecycle,
             payload=mesg,
             exception=error,
         )
@@ -165,12 +241,13 @@ def reject_message(
     properties: pika.spec.BasicProperties,
     mesg: PayloadDict | None,
     error: Exception | None = None,
+    lifecycle: str | None = "service-handle",
 ) -> None:
-    """If the message is not a request, then reject the message and move on"""
+    """reject_message: If the message is not a request, then reject the message and move on"""
     if channel is None or not channel.is_open:
         raise NuropbTransportError(
             message="unable to reject message, RMQ channel closed",
-            lifecycle="service-handle",
+            lifecycle=lifecycle,
             payload=mesg,
             exception=error,
         )
@@ -186,12 +263,13 @@ def ack_message(
     properties: pika.spec.BasicProperties,
     mesg: PayloadDict | None,
     error: Exception | None = None,
+    lifecycle: str | None = "service-handle",
 ) -> None:
-    """ack the message"""
+    """ack_message: ack the message"""
     if channel is None or not channel.is_open:
         raise NuropbTransportError(
             message="Unable to ack message, RMQ channel closed",
-            lifecycle="service-ack",
+            lifecycle=lifecycle,
             payload=mesg,
             exception=error,
         )

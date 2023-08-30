@@ -4,6 +4,7 @@ import asyncio
 from uuid import uuid4
 
 from nuropb.rmq_api import RMQAPI
+from nuropb.rmq_config import ServiceContainer
 
 logger = logging.getLogger()
 
@@ -26,8 +27,9 @@ async def make_request(api: RMQAPI):
     return response == f"response from {service}.{method}"
 
 
-async def main(ioloop: asyncio.AbstractEventLoop):
+async def main():
     amqp_url = "amqp://guest:guest@127.0.0.1:5672/sandbox"
+    api_url = "http://guest:guest@localhost:15672/api"
     service_name = "sandbox_client"
     instance_id = uuid4().hex
 
@@ -44,12 +46,26 @@ async def main(ioloop: asyncio.AbstractEventLoop):
         transport_settings=transport_settings,
         client_only=True,
     )
-    await api.connect()
+    if 0:  # with not container
+        await api.connect()
+
+    else:  # using container
+        container = ServiceContainer(
+            rmq_api_url=api_url,
+            instance=api,
+            etcd_config=dict(
+                host="localhost",
+                port=2379,
+            ),
+        )
+        await container.start()
+
     total_seconds = 0
     total_sample_count = 0
 
     batch_size = 10000
     number_of_batches = 1
+    ioloop = asyncio.get_event_loop()
 
     for _ in range(number_of_batches):
         start_time = datetime.datetime.utcnow()
@@ -76,8 +92,6 @@ if __name__ == '__main__':
                   '-35s %(lineno) -5d: %(message)s')
     logging.basicConfig(level=logging.INFO, format=log_format)
     logging.getLogger('pika').setLevel(logging.WARNING)
+    asyncio.run(main())
 
-    loop = asyncio.get_event_loop()
-    loop.create_task(main(loop))
-    loop.run_forever()
 
