@@ -8,6 +8,8 @@ def obfuscate_credentials(url_with_credentials: str) -> str:
     """
     pattern = r"(:.*?@)"
     result = re.sub(
-        pattern, lambda match: ":" + "x" * (len(match.group(0)) - 2) + "@", url_with_credentials
+        pattern,
+        lambda match: ":" + "x" * (len(match.group(0)) - 2) + "@",
+        url_with_credentials,
     )
     return result
