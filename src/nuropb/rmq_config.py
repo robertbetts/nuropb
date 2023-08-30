@@ -19,7 +19,7 @@ connecting and starting to consume messages from the RMQ Queues.
 import asyncio
 import logging
 from asyncio import AbstractEventLoop
-from typing import Dict, Any, Awaitable, Literal, Type
+from typing import Dict, Any, Awaitable, Literal
 
 from etcd3 import Client as EtcdClient
 from etcd3.stateful.lease import Lease
@@ -374,14 +374,13 @@ class ServiceContainer(ServiceConfigState):
         RMQ configuration to be OK before connecting to RMQ. Although the RMQ configuration queue 
         is idempotent, it is better consistency across the service instances to wait.
         """
-        if self._instance.client_only is False:
-            if self._rmq_config_ok is False:
-                response = self._etcd_client.range(f"{self._etcd_prefix}/rmq-config-ok")
-                if len(response.kvs) >= 1 and response.kvs[0].value:
-                    self._rmq_config_ok = response.kvs[0].value.decode() == "True"
-                while self._rmq_config_ok is False:
-                    logging.debug("Waiting for the RMQ configuration to be OK")
-                    await asyncio.sleep(5)  # wait 5 more seconds
+        if self._instance.client_only is False and self._rmq_config_ok is False:
+            response = self._etcd_client.range(f"{self._etcd_prefix}/rmq-config-ok")
+            if len(response.kvs) >= 1 and response.kvs[0].value:
+                self._rmq_config_ok = response.kvs[0].value.decode() == "True"
+            while self._rmq_config_ok is False:
+                logging.debug("Waiting for the RMQ configuration to be OK")
+                await asyncio.sleep(5)  # wait 5 more seconds
 
         await self._instance.connect()
         self.running_state = "running-leader" if self._is_leader else "running-follower"

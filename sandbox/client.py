@@ -4,7 +4,7 @@ import asyncio
 from uuid import uuid4
 
 from nuropb.rmq_api import RMQAPI
-from nuropb.rmq_config import ServiceContainer
+
 
 logger = logging.getLogger()
 
@@ -29,7 +29,6 @@ async def make_request(api: RMQAPI):
 
 async def main():
     amqp_url = "amqp://guest:guest@127.0.0.1:5672/sandbox"
-    api_url = "http://guest:guest@localhost:15672/api"
     service_name = "sandbox_client"
     instance_id = uuid4().hex
 
@@ -46,19 +45,7 @@ async def main():
         transport_settings=transport_settings,
         client_only=True,
     )
-    if 0:  # with not container
-        await api.connect()
-
-    else:  # using container
-        container = ServiceContainer(
-            rmq_api_url=api_url,
-            instance=api,
-            etcd_config=dict(
-                host="localhost",
-                port=2379,
-            ),
-        )
-        await container.start()
+    await api.connect()
 
     total_seconds = 0
     total_sample_count = 0
@@ -93,5 +80,3 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format=log_format)
     logging.getLogger('pika').setLevel(logging.WARNING)
     asyncio.run(main())
-
-

@@ -11,6 +11,7 @@ from nuropb.rmq_transport import RMQTransport
 
 logging.getLogger("pika").setLevel(logging.WARNING)
 
+
 @pytest.fixture(scope="session")
 def test_settings():
     start_time = datetime.datetime.utcnow()
@@ -116,4 +117,3 @@ def unconfigured_rmq_url(test_settings, test_rmq_url, test_api_url):
     create_virtual_host(test_api_url, tmp_url)
     yield tmp_url
     delete_virtual_host(test_api_url, tmp_url)
-

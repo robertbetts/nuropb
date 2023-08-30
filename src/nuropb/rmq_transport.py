@@ -10,6 +10,7 @@ from pika.adapters.asyncio_connection import AsyncioConnection
 from pika.channel import Channel
 from pika.exceptions import ChannelClosedByBroker
 import pika.spec
+from pika.frame import Method
 
 from nuropb.interface import (
     MessageCallbackType,
@@ -355,8 +356,8 @@ class RMQTransport:
         connection. The IOLoop is started again because this method is invoked
         when CTRL-C is pressed raising a KeyboardInterrupt exception. This
         exception stops the IOLoop which needs to be running for pika to
-        communicate with RabbitMQ. All of the commands issued prior to starting
-        the IOLoop will be buffered but not processed.
+        communicate with RabbitMQ. All commands issued prior to starting the
+        IOLoop will be buffered but not processed.
 
         """
         self._reconnect = False
@@ -394,19 +395,19 @@ class RMQTransport:
             "client_only": self._client_only,
         }
 
-        connection = AsyncioConnection(
+        conn = AsyncioConnection(
             parameters=pika.URLParameters(self._amqp_url),
             on_open_callback=self.on_connection_open,
             on_open_error_callback=self.on_connection_open_error,
             on_close_callback=self.on_connection_closed,
         )
         # TODO: overwrite the pika client properties with our own, see top of module too
-        connection._client_properties.update(
+        conn._client_properties.update(
             {
                 "product": "NuroPb Distributed RPC-Event Library",
             }
         )
-        self._connection = connection
+        self._connection = conn
 
         return self._connected_future
 
@@ -499,7 +500,7 @@ class RMQTransport:
 
     def on_channel_open(self, channel: Channel) -> None:
         """This method is invoked by pika when the channel has been opened. The channel object is passed
-         in so we can make use of it.
+         in so that we can make use of it.
 
         :param pika.channel.Channel channel: The channel object
         """
@@ -511,7 +512,7 @@ class RMQTransport:
     def on_channel_closed(self, channel: Channel, reason: Exception) -> None:
         """Invoked by pika when RabbitMQ unexpectedly closes the channel. Channels are usually closed
         if you attempt to do something that violates the protocol, such as re-declare an exchange or
-        queue with different parameters. In this case, we'll close the connection to shutdown the object.
+        queue with different parameters. In this case, we'll close the connection to shut down the object.
 
         :param pika.channel.Channel channel: The closed channel
         :param Exception reason: why the channel was closed
@@ -546,7 +547,7 @@ Check that the following exchanges, queues and bindings exist:
                     )
 
     def declare_response_queue(self) -> None:
-        """Setup the response queue on RabbitMQ by invoking the Queue.Declare RPC command. When it
+        """Set up the response queue on RabbitMQ by invoking the Queue.Declare RPC command. When it
         is complete, the on_response_queue_declareok method will be invoked by pika.
         """
         logger.info("Declaring response queue %s", self._response_queue)
@@ -619,14 +620,12 @@ Check that the following exchanges, queues and bindings exist:
 
         :param pika.frame.Method _frame: The Queue.BindOk response frame
         :param str|unicode userdata: Extra user data (queue name)
-
         """
         logger.info("Response queue bound ok: %s", userdata)
         """This method sets up the consumer prefetch to only be delivered
         one message at a time. The consumer must acknowledge this message
         before RabbitMQ will deliver another one. You should experiment
         with different prefetch values to achieve desired performance.
-
         """
         if self._channel is None:
             raise RuntimeError("RMQ transport channel is not open")

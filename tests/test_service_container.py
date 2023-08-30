@@ -4,7 +4,7 @@ from uuid import uuid4
 import pytest
 
 from nuropb.rmq_api import RMQAPI
-from nuropb.rmq_config import ContainerRunningState, ServiceContainer
+from nuropb.rmq_config import ServiceContainer
 
 logger = logging.getLogger()
 
