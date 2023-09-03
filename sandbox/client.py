@@ -14,7 +14,7 @@ async def make_request(api: RMQAPI):
     method = "test_method"
     params = {"param1": "value1"}
     context = {"context1": "value1"}
-    ttl = 60*30*1000
+    ttl = 60 * 30 * 1000
     trace_id = uuid4().hex
     response = await api.request(
         service=service,
@@ -32,7 +32,7 @@ async def make_command(api: RMQAPI):
     method = "test_method"
     params = {"param1": "value1"}
     context = {"context1": "value1"}
-    ttl = 60*30*1000
+    ttl = 60 * 30 * 1000
     trace_id = uuid4().hex
     api.command(
         service=service,
@@ -63,7 +63,7 @@ async def main():
 
     transport_settings = dict(
         prefetch_count=10,
-        default_ttl=60*30*1000,  # 30 minutes
+        default_ttl=60 * 30 * 1000,  # 30 minutes
     )
     api = RMQAPI(
         instance_id=instance_id,
@@ -106,14 +106,21 @@ async def main():
         total_seconds += time_taken.total_seconds()
         total_sample_count += loop_batch_size
 
-    logger.info("Client Done: %s in %s -> %s", total_sample_count, total_seconds,  total_sample_count/total_seconds)
+    logger.info(
+        "Client Done: %s in %s -> %s",
+        total_sample_count,
+        total_seconds,
+        total_sample_count / total_seconds,
+    )
     fut = asyncio.Future()
     await fut
 
 
-if __name__ == '__main__':
-    log_format = ('%(levelname) -10s %(asctime)s %(name) -30s %(funcName) '
-                  '-35s %(lineno) -5d: %(message)s')
+if __name__ == "__main__":
+    log_format = (
+        "%(levelname) -10s %(asctime)s %(name) -30s %(funcName) "
+        "-35s %(lineno) -5d: %(message)s"
+    )
     logging.basicConfig(level=logging.INFO, format=log_format)
-    logging.getLogger('pika').setLevel(logging.WARNING)
+    logging.getLogger("pika").setLevel(logging.WARNING)
     asyncio.run(main())

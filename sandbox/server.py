@@ -19,7 +19,7 @@ async def main():
         rpc_bindings=[service_name],
         event_bindings=["test-event"],
         prefetch_count=10,
-        default_ttl=60*30*1000,  # 30 minutes
+        default_ttl=60 * 30 * 1000,  # 30 minutes
     )
 
     service_example = ServiceExample(
@@ -50,11 +50,13 @@ async def main():
     logging.info("Server Done")
 
 
-if __name__ == '__main__':
-    log_format = ('%(levelname).1s %(asctime)s %(name) -25s %(funcName) '
-                  '-35s %(lineno) -5d: %(message)s')
+if __name__ == "__main__":
+    log_format = (
+        "%(levelname).1s %(asctime)s %(name) -25s %(funcName) "
+        "-35s %(lineno) -5d: %(message)s"
+    )
     logging.basicConfig(level=logging.INFO, format=log_format)
-    logging.getLogger('pika').setLevel(logging.WARNING)
-    logging.getLogger('etcd3').setLevel(logging.WARNING)
-    logging.getLogger('urllib3').setLevel(logging.WARNING)
+    logging.getLogger("pika").setLevel(logging.WARNING)
+    logging.getLogger("etcd3").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
     asyncio.run(main())

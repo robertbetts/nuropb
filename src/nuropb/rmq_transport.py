@@ -18,8 +18,14 @@ from nuropb.interface import (
     NuropbTransportError,
     NuropbLifecycleState,
     TransportServicePayload,
-    NUROPB_PROTOCOL_VERSIONS_SUPPORTED, NUROPB_MESSAGE_TYPES, TransportRespondPayload, MessageCallbackFunction,
-    AcknowledgeAction, NUROPB_PROTOCOL_VERSION, NUROPB_VERSION, NuropbNotDeliveredError
+    NUROPB_PROTOCOL_VERSIONS_SUPPORTED,
+    NUROPB_MESSAGE_TYPES,
+    TransportRespondPayload,
+    MessageCallbackFunction,
+    AcknowledgeAction,
+    NUROPB_PROTOCOL_VERSION,
+    NUROPB_VERSION,
+    NuropbNotDeliveredError,
 )
 from nuropb.rmq_lib import (
     rmq_api_url_from_amqp_url,
@@ -72,9 +78,9 @@ def encode_payload(payload: PayloadDict, payload_type: str = "json") -> bytes:
 
 
 def decode_payload(
-        payload: bytes,
-        payload_type: str = "json",
-        updates: Optional[Dict[str, Any]] = None,
+    payload: bytes,
+    payload_type: str = "json",
+    updates: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     :param payload:
@@ -97,9 +103,7 @@ def decode_payload(
 
 
 def decode_rmq_body(
-    method: pika.spec.Basic.Deliver,
-    properties: pika.spec.BasicProperties,
-    body: bytes
+    method: pika.spec.Basic.Deliver, properties: pika.spec.BasicProperties, body: bytes
 ) -> TransportServicePayload:
     """Map the incoming RabbitMQ message to python compatible dictionary as
     defined by ServicePayloadDict
@@ -118,7 +122,9 @@ def decode_rmq_body(
             f"nuropb_protocol '{service_message['nuropb_protocol']}' is not supported"
         )
     if service_message["nuropb_type"] not in NUROPB_MESSAGE_TYPES:
-        raise ValueError(f"message_type '{service_message['nuropb_type']}' is not supported")
+        raise ValueError(
+            f"message_type '{service_message['nuropb_type']}' is not supported"
+        )
     service_message["nuropb_payload"] = decode_payload(body, "json")
     return service_message
 
@@ -244,7 +250,8 @@ class RMQTransport:
         self._dl_queue = dl_queue or f"nuropb-{self._service_name}-dl"
         self._service_queue = service_queue or f"nuropb-{self._service_name}-service"
         self._response_queue = (
-            response_queue or f"nuropb-{self._service_name}-{self._instance_id}-response"
+            response_queue
+            or f"nuropb-{self._service_name}-{self._instance_id}-response"
         )
         self._rpc_bindings = set(rpc_bindings or [])
         self._event_bindings = set(event_bindings or [])
@@ -395,7 +402,9 @@ class RMQTransport:
                     f"The NuroPb configuration is missing from RabbitMQ for the virtual host: {vhost}"
                 )
             else:
-                logger.error(f"Access denied to RabbitMQ for the virtual host {vhost}: {err}")
+                logger.error(
+                    f"Access denied to RabbitMQ for the virtual host {vhost}: {err}"
+                )
                 raise err
         except Exception as err:
             logger.error(f"Failed to connect to RabbitMQ: {err}")
@@ -598,7 +607,7 @@ Check that the following exchanges, queues and bindings exist:
                 if self._connected_future and not self._connected_future.done():
                     self._connected_future.set_exception(
                         ServiceNotConfigured(
-                            f"RabbitMQ not preperly configured: {reason}"
+                            f"RabbitMQ not properly configured: {reason}"
                         )
                     )
 
@@ -613,7 +622,9 @@ Check that the following exchanges, queues and bindings exist:
             if self._channel is None:
                 raise RuntimeError("RMQ transport channel is not open")
 
-            cb = functools.partial(self.on_service_queue_declareok, _userdata=self._service_queue)
+            cb = functools.partial(
+                self.on_service_queue_declareok, _userdata=self._service_queue
+            )
             service_queue_config = {
                 "durable": True,
                 "auto_delete": False,
@@ -628,7 +639,7 @@ Check that the following exchanges, queues and bindings exist:
             self.on_bindok(None, userdata=self._response_queue)
 
     def on_service_queue_declareok(
-            self, frame: pika.frame.Method, _userdata: str
+        self, frame: pika.frame.Method, _userdata: str
     ) -> None:
         logger.info(f"Refreshing rpc bindings for service queue: {self._service_queue}")
         if self._channel is None:
@@ -643,7 +654,9 @@ Check that the following exchanges, queues and bindings exist:
             self._channel.queue_bind(
                 self._service_queue, self._rpc_exchange, routing_key=routing_key
             )
-        logger.info(f"Refreshing event bindings for service queue: {self._service_queue}")
+        logger.info(
+            f"Refreshing event bindings for service queue: {self._service_queue}"
+        )
         for routing_key in self._event_bindings:
             logger.info(
                 f"Binding to"
@@ -734,7 +747,7 @@ Check that the following exchanges, queues and bindings exist:
 
         self._channel.add_on_cancel_callback(self.on_consumer_cancelled)
 
-        # Start consuming the response queue these need their own handler as the ack type is automatic"
+        # Start consuming the response queue these need their own handler as the ack type is automatic
         self._consumer_tags.add(
             self._channel.basic_consume(
                 on_message_callback=functools.partial(
@@ -777,21 +790,20 @@ Check that the following exchanges, queues and bindings exist:
             self._channel.close()
 
     def on_message_returned(
-            self,
-            channel: pika.channel.Channel, # noqa
-            method: pika.spec.Basic.Return,
-            properties: pika.spec.BasicProperties,
-            body: bytes, # noqa
-            ) -> None:
+        self,
+        channel: pika.channel.Channel,  # noqa
+        method: pika.spec.Basic.Return,
+        properties: pika.spec.BasicProperties,
+        body: bytes,  # noqa
+    ) -> None:
         """Called when message has been rejected by the server.
 
         callable callback: The function to call, having the signature callback(channel, method, properties, body)
 
-        :param
-            channel: pika.Channel
-            method: pika.spec.Basic.Deliver
-            properties: pika.spec.BasicProperties
-            body: bytes
+        :param channel: pika.Channel
+        :param method: pika.spec.Basic.Deliver
+        :param properties: pika.spec.BasicProperties
+        :param body: bytes
         """
         _ = channel, body
         correlation_id = properties.correlation_id
@@ -836,9 +848,11 @@ Check that the following exchanges, queues and bindings exist:
         """
         mandatory = True if mandatory is None else mandatory
         headers = properties.setdefault("headers", {})
-        headers.update({
-            "nuropb_protocol": NUROPB_PROTOCOL_VERSION,
-        })
+        headers.update(
+            {
+                "nuropb_protocol": NUROPB_PROTOCOL_VERSION,
+            }
+        )
         properties["headers"] = headers
         if self._channel is None or self._channel.is_closed:
             lifecycle: NuropbLifecycleState = "client-send"
@@ -893,8 +907,10 @@ Check that the following exchanges, queues and bindings exist:
         else:
             raise ValueError(f"Invalid action {action}")
 
-    def send_response_messages(self, reply_to: str, message: TransportRespondPayload) -> None:
-        """ Send response to request messages and also event messages. These messages can be over
+    def send_response_messages(
+        self, reply_to: str, message: TransportRespondPayload
+    ) -> None:
+        """Send response to request messages and also event messages. These messages can be over
         new connections and channels. Any exceptions need to be contained and handled within the
         scope of this method.
         """
@@ -933,28 +949,26 @@ Check that the following exchanges, queues and bindings exist:
             logger.critical(
                 f"Error sending message in response to request correlation_id: {correlation_id}, trace_id: {trace_id}"
             )
-            logger.exception(
-                f"Failed to send response message: Error: {error}"
-            )
+            logger.exception(f"Failed to send response message: Error: {error}")
 
     @classmethod
     def metadata_metrics(cls, metadata: Dict[str, Any]) -> None:
-        """ Invoked by the transport after a service message has been processed.
+        """Invoked by the transport after a service message has been processed.
         :param metadata: information to drive message processing metrics
         :return: None
         """
         logger.debug(f"metadata log: {metadata}")
 
     def on_service_message_complete(
-            self,
-            channel: Channel,
-            delivery_tag: int,
-            reply_to: str | None,
-            private_metadata: Dict[str, Any],
-            response_messages: List[TransportRespondPayload],
-            acknowledgement: AcknowledgeAction,
+        self,
+        channel: Channel,
+        delivery_tag: int,
+        reply_to: str | None,
+        private_metadata: Dict[str, Any],
+        response_messages: List[TransportRespondPayload],
+        acknowledgement: AcknowledgeAction,
     ) -> None:
-        """ Invoked by the implementation after a service message has been processed.
+        """Invoked by the implementation after a service message has been processed.
 
         This is provided to the implementation as a helper function to complete the message flow.
         The message flow state parameters: channel, delivery_tag, reply_to and private_metadata
@@ -980,7 +994,9 @@ Check that the following exchanges, queues and bindings exist:
             self.send_response_messages(reply_to, respond_message)
 
         private_metadata["end_time"] = time.time()
-        private_metadata["duration"] = private_metadata["end_time"] - private_metadata["start_time"]
+        private_metadata["duration"] = (
+            private_metadata["end_time"] - private_metadata["start_time"]
+        )
         private_metadata["acknowledgement"] = acknowledgement
         private_metadata["message_count"] = len(response_messages)
         self.metadata_metrics(metadata=private_metadata)
@@ -1050,7 +1066,8 @@ Check that the following exchanges, queues and bindings exist:
         if not verbose:
             logger.debug(f"service message received: '{nuropb_type}'")
         else:
-            logger.debug(f"""MESSAGE FROM SERVICE QUEUE:
+            logger.debug(
+                f"""MESSAGE FROM SERVICE QUEUE:
 delivery_tag: {basic_deliver.delivery_tag}
 from_exchange: {basic_deliver.exchange}
 from_queue: {queue_name}
@@ -1058,24 +1075,27 @@ routing_key: {basic_deliver.routing_key}
 correlation_id: {properties.correlation_id}
 trace_id: {properties.headers.get('trace_id', '')}
 content_type: {properties.content_type}
-nuropb_type: {properties.headers.get('nuropb_type', '')}""")
+nuropb_type: {properties.headers.get('nuropb_type', '')}"""
+            )
         """ Handle for the unknown message type and reply to the originator if possible
         """
-        nuropb_version = properties.headers.get('nuropb_version', '')
+        nuropb_version = properties.headers.get("nuropb_version", "")
         metadata = {
             "start_time": time.time(),
             "instance_id": self._instance_id,
             "nuropb_type": nuropb_type,
-            "nuropb_version": nuropb_version
+            "nuropb_version": nuropb_version,
         }
         try:
             service_message = decode_rmq_body(basic_deliver, properties, body)
         except Exception as error:
-            """Exceptions caught here are treated as permanent failures, ack the message and send 
-                error response is possible
+            """Exceptions caught here are treated as permanent failures, ack the message and send
+            error response is possible
             """
             logger.exception(f"service message decode error: {error}")
-            self.acknowledge_service_message(channel, basic_deliver.delivery_tag, "reject")
+            self.acknowledge_service_message(
+                channel, basic_deliver.delivery_tag, "reject"
+            )
 
             # TODO: Send response if message has properties.reply_to and better logging
 
@@ -1109,10 +1129,11 @@ nuropb_type: {properties.headers.get('nuropb_type', '')}""")
             self._message_callback(service_message, message_complete_callback, metadata)
 
         except Exception as error:
-            """Exceptions caught here are treated as permanent failures, ack the message and send error response
-            """
+            """Exceptions caught here are treated as permanent failures, ack the message and send error response"""
             logger.exception(f"service message handling error: {error}")
-            self.acknowledge_service_message(channel, basic_deliver.delivery_tag, "reject")
+            self.acknowledge_service_message(
+                channel, basic_deliver.delivery_tag, "reject"
+            )
 
             # TODO: Send response if message has properties.reply_to and better logging
 

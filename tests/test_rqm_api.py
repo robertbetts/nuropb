@@ -3,17 +3,15 @@ from uuid import uuid4
 import secrets
 import logging
 
-from nuropb.interface import NuropbMessageError
 from nuropb.rmq_api import RMQAPI
 from nuropb.rmq_lib import create_virtual_host, delete_virtual_host
-from nuropb.rmq_transport import ServiceNotConfigured
 
 logging.getLogger("pika").setLevel(logging.WARNING)
 logger = logging.getLogger()
 
 
 def test_rmq_preparation(test_settings, test_rmq_url, test_api_url):
-    """ Test that the RMQ instance is and can be correctly configured
+    """Test that the RMQ instance is and can be correctly configured
     - create virtual host must be idempotent
     - delete virtual host must be idempotent
     """
@@ -26,11 +24,10 @@ def test_rmq_preparation(test_settings, test_rmq_url, test_api_url):
 
 @pytest.mark.asyncio
 async def test_rmq_api_client_mode(test_settings, test_rmq_url):
-    """ Test client mode. this is a client only instance of RMQAPI and only established a connection
+    """Test client mode. this is a client only instance of RMQAPI and only established a connection
     to the RMQ server. It registers a response queue that is automatically associated with the default
     exchange, requires that RMQ is sufficiently setup.
     """
-    service_name = "test_client"
     instance_id = uuid4().hex
     transport_settings = dict(
         dl_exchange=test_settings["dl_exchange"],
@@ -53,6 +50,7 @@ async def test_rmq_api_client_mode(test_settings, test_rmq_url):
 
 
 # @pytest.mark.skip
+
 
 @pytest.mark.asyncio
 async def test_rmq_api_service_mode(test_settings, test_rmq_url, service_instance):
@@ -78,5 +76,3 @@ async def test_rmq_api_service_mode(test_settings, test_rmq_url, service_instanc
     assert rmq_api.connected is True
     await rmq_api.disconnect()
     assert rmq_api.connected is False
-
-

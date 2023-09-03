@@ -18,7 +18,7 @@ from etcd3.client import Client
 
 logger = logging.getLogger(__name__)
 
-LEADER_KEY = '/test-service/leader'
+LEADER_KEY = "/test-service/leader"
 LEASE_TTL = 5
 SLEEP = 10
 
@@ -40,7 +40,9 @@ def nominate_leader(client, lease, leader_id):
         if nomination_succeeded:
             leader_reference = leader_id
         else:
-            leader_reference = response.responses[0].response_range.kvs[0].value.decode()
+            leader_reference = (
+                response.responses[0].response_range.kvs[0].value.decode()
+            )
         is_leader = leader_reference == leader_id
     # except ErrLeaseNotFound:
     #     pass
@@ -52,7 +54,6 @@ def nominate_leader(client, lease, leader_id):
 
 
 async def main(instance_id: str):
-
     service_info = {
         "service_name": "test-service",
         "instance_id": instance_id,
@@ -64,17 +65,19 @@ async def main(instance_id: str):
     def on_leader_event(event):
         logger.critical(f"WATCHER: leader change {event.key}: {event.value}")
         new_reference = event.value.decode() if event.value else None
-        leader, reference = nominate_leader(client, lease, service_info['instance_id'])
-        service_info['is_leader'] = leader
-        if service_info['leader_reference'] != reference:
-            logger.critical(f"LEADER CHANGE: {service_info['leader_reference']} -> {leader_reference}")
+        leader, reference = nominate_leader(client, lease, service_info["instance_id"])
+        service_info["is_leader"] = leader
+        if service_info["leader_reference"] != reference:
+            logger.critical(
+                f"LEADER CHANGE: {service_info['leader_reference']} -> {leader_reference}"
+            )
             if leader:
                 logger.critical(f"You are now the leader")
             else:
-                logger.info(f'You are a follower')
+                logger.info(f"You are a follower")
         # else:
         #     logger.critical(f"LEADER UNCHANGED: {service_info['leader_reference']} == {new_reference}")
-        service_info['leader_reference'] = reference
+        service_info["leader_reference"] = reference
 
     w = client.Watcher(all=True, progress_notify=True, prev_kv=True)
     w.onEvent(f"/{service_info['service_name']}/leader", on_leader_event)
@@ -85,9 +88,11 @@ async def main(instance_id: str):
 
         with client.Lease(LEASE_TTL) as lease:
             try:
-                is_leader, leader_reference = nominate_leader(client, lease, service_info['instance_id'])
-                service_info['is_leader'] = is_leader
-                service_info['leader_reference'] = leader_reference
+                is_leader, leader_reference = nominate_leader(
+                    client, lease, service_info["instance_id"]
+                )
+                service_info["is_leader"] = is_leader
+                service_info["leader_reference"] = leader_reference
                 if is_leader:
                     logger.critical(f"You are now the leader")
                 else:
@@ -100,20 +105,22 @@ async def main(instance_id: str):
             except (Exception, KeyboardInterrupt):
                 return
             finally:
-                logger.info('main() done')
+                logger.info("main() done")
 
         w.stop()
 
 
 def task_done(future):
-    logger.info(f'task done: {future.done()} {future.result()}')
+    logger.info(f"task done: {future.done()} {future.result()}")
 
 
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(filename)s:%(lineno)d: %(message)s")
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(filename)s:%(lineno)d: %(message)s",
+    )
     my_id = secrets.token_hex(8)
     ioloop = asyncio.get_event_loop()
     task = ioloop.create_task(main(my_id))
     task.add_done_callback(task_done)
     ioloop.run_forever()
-

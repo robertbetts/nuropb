@@ -12,8 +12,11 @@ from nuropb.interface import (
     RequestPayloadDict,
     EventPayloadDict,
     NuropbHandlingError,
-    ResultFutureResponsePayload, TransportServicePayload, MessageCompleteFunction, NUROPB_PROTOCOL_VERSION,
-    CommandPayloadDict
+    ResultFutureResponsePayload,
+    TransportServicePayload,
+    MessageCompleteFunction,
+    NUROPB_PROTOCOL_VERSION,
+    CommandPayloadDict,
 )
 from nuropb.rmq_transport import RMQTransport, encode_payload
 from nuropb.service_handlers import execute_request, handle_execution_result
@@ -149,7 +152,7 @@ class RMQAPI(NuropbInterface):
         await self._transport.stop()
 
     async def keep_loop_active(self) -> None:
-        """ keep_loop_active: keeps the asyncio loop active while the transport is connected
+        """keep_loop_active: keeps the asyncio loop active while the transport is connected
 
         The factor for introducing this method is that during pytest, the asyncio loop
         is not always running when expected. there is an 1 cost with this delay, that will
@@ -169,14 +172,16 @@ class RMQAPI(NuropbInterface):
         message_complete_callback: MessageCompleteFunction,
         metadata: Dict[str, Any],
     ) -> None:
-        """ receive_transport_message: handles a messages received from the transport layer
+        """receive_transport_message: handles a messages received from the transport layer
             for processing by the service instance. Both incoming service messages and response
             messages pass through this method.
 
         :return: None
         """
         if service_message["nuropb_type"] == "response":
-            response_payload: ResponsePayloadDict = cast(ResponsePayloadDict, service_message["nuropb_payload"])
+            response_payload: ResponsePayloadDict = cast(
+                ResponsePayloadDict, service_message["nuropb_payload"]
+            )
             logger.debug(
                 f"Received response.  "
                 f"trace_id: {service_message['trace_id']} "
@@ -191,7 +196,9 @@ class RMQAPI(NuropbInterface):
 
             # Setting the result on this future will complete "await api.request(...)"
             try:
-                response_future = self._response_futures.pop(service_message["correlation_id"])
+                response_future = self._response_futures.pop(
+                    service_message["correlation_id"]
+                )
                 response_future.set_result(response_payload)
             except Exception as error:
                 logger.exception(
@@ -205,9 +212,7 @@ class RMQAPI(NuropbInterface):
         """ The logic below is only relevant for incoming service messages
         """
         if self._service_instance is None:
-            error_description = (
-                f"No service instance configured to handle the {service_message['nuropb_type']} instruction"
-            )
+            error_description = f"No service instance configured to handle the {service_message['nuropb_type']} instruction"
             logger.warning(error_description)
             response = NuropbHandlingError(
                 description=error_description,
@@ -218,12 +223,16 @@ class RMQAPI(NuropbInterface):
             return
 
         if service_message["nuropb_type"] in ("request", "command", "event"):
-            payload = service_message["nuropb_payload"]
             logger.debug(f"Received {service_message['nuropb_type']}")
-            execute_request(self._service_instance, service_message, message_complete_callback)
+            execute_request(
+                self._service_instance, service_message, message_complete_callback
+            )
 
         else:
-            logger.warning("Received an unsupported message type: %s", service_message["nuropb_type"])
+            logger.warning(
+                "Received an unsupported message type: %s",
+                service_message["nuropb_type"],
+            )
 
     async def request(
         self,
@@ -366,14 +375,14 @@ class RMQAPI(NuropbInterface):
             return response["result"]
 
     def command(
-            self,
-            service: str,
-            method: str,
-            params: Dict[str, Any],
-            context: Dict[str, Any],
-            wait_for_ack: bool = False,
-            ttl: Optional[int] = None,
-            trace_id: Optional[str] = None,
+        self,
+        service: str,
+        method: str,
+        params: Dict[str, Any],
+        context: Dict[str, Any],
+        wait_for_ack: bool = False,
+        ttl: Optional[int] = None,
+        trace_id: Optional[str] = None,
     ) -> None:
         """command: sends a command to the target service. It is up to the implementation to manage message
         idempotency and message delivery guarantees.
@@ -438,9 +447,6 @@ class RMQAPI(NuropbInterface):
             properties=properties,
             mandatory=True,
         )
-
-
-
 
     def publish_event(
         self,

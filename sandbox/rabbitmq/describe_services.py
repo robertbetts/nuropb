@@ -16,10 +16,12 @@ async def main():
 
 
 if __name__ == "__main__":
-    log_format = ('%(levelname).1s %(asctime)s %(name) -20s %(funcName) '
-                  '-35s %(lineno) -5d: %(message)s')
+    log_format = (
+        "%(levelname).1s %(asctime)s %(name) -20s %(funcName) "
+        "-35s %(lineno) -5d: %(message)s"
+    )
     logging.basicConfig(level=logging.INFO, format=log_format)
-    logging.getLogger('pika').setLevel(logging.WARNING)
-    logging.getLogger('etcd3').setLevel(logging.WARNING)
+    logging.getLogger("pika").setLevel(logging.WARNING)
+    logging.getLogger("etcd3").setLevel(logging.WARNING)
     # logging.getLogger('urllib3').setLevel(logging.WARNING)
     asyncio.run(main())

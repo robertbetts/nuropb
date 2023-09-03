@@ -3,7 +3,13 @@ from typing import Dict, Any, Optional, Callable
 from uuid import uuid4
 import pytest  # type: ignore
 
-from nuropb.interface import NuropbInterface, ResponsePayloadDict, PayloadDict, AcknowledgeAction, RequestPayloadDict
+from nuropb.interface import (
+    NuropbInterface,
+    ResponsePayloadDict,
+    PayloadDict,
+    AcknowledgeAction,
+    RequestPayloadDict,
+)
 
 
 class TestTransport:
@@ -69,11 +75,10 @@ class TestInterface(NuropbInterface):
         await self._transport.stop()
 
     def receive_transport_message(
-            self,
-            message: PayloadDict,
-            acknowledge_function: Optional[Callable[[AcknowledgeAction], None]],
+        self,
+        message: PayloadDict,
+        acknowledge_function: Optional[Callable[[AcknowledgeAction], None]],
     ) -> None:
-
         if message["tag"] == "request":
             result = f"expected request response from {message['service']}.{message['method']}"
         elif message["tag"] == "command":
@@ -125,11 +130,12 @@ class TestInterface(NuropbInterface):
             correlation_id=uuid4().hex,
             trace_id=trace_id,
             context=context,
-            reply_to=""
+            reply_to="",
         )
 
         def acknowledge_function(action: AcknowledgeAction) -> None:
             _ = action
+
         self._test_request_future = asyncio.Future()
         self.receive_transport_message(request, acknowledge_function)
         response = await self._test_request_future

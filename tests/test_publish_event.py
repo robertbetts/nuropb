@@ -1,5 +1,3 @@
-import asyncio
-
 import pytest
 from uuid import uuid4
 import logging
@@ -12,7 +10,6 @@ logger = logging.getLogger()
 
 @pytest.mark.asyncio
 async def test_event_publish(test_settings, test_rmq_url_static, service_instance):
-
     test_rmq_url = test_rmq_url_static
 
     service_name = test_settings["service_name"]
@@ -70,4 +67,3 @@ async def test_event_publish(test_settings, test_rmq_url_static, service_instanc
     assert client_api.connected is False
     await service_api.disconnect()
     assert service_api.connected is False
-

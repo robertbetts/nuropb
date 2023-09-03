@@ -5,8 +5,13 @@ from uuid import uuid4
 
 import pytest
 
-from nuropb.interface import PayloadDict
-from nuropb.rmq_lib import build_amqp_url, build_rmq_api_url, create_virtual_host, delete_virtual_host, configure_nuropb_rmq
+from nuropb.rmq_lib import (
+    build_amqp_url,
+    build_rmq_api_url,
+    create_virtual_host,
+    delete_virtual_host,
+    configure_nuropb_rmq,
+)
 from nuropb.rmq_transport import RMQTransport
 from nuropb.testing.stubs import ServiceExample
 
@@ -89,7 +94,7 @@ def test_rmq_url(test_settings):
         dl_queue=transport._dl_queue,
         service_queue=transport._service_queue,
         rpc_bindings=list(transport._rpc_bindings),
-        event_bindings=list(transport._event_bindings)
+        event_bindings=list(transport._event_bindings),
     )
     yield rmq_url
     logging.debug("Shutting down RabbitMQ test instance")
@@ -144,7 +149,7 @@ def test_rmq_url_static(test_settings):
         dl_queue=transport._dl_queue,
         service_queue=transport._service_queue,
         rpc_bindings=list(transport._rpc_bindings),
-        event_bindings=list(transport._event_bindings)
+        event_bindings=list(transport._event_bindings),
     )
     yield rmq_url
     # logging.debug("Shutting down RabbitMQ test instance")
@@ -165,7 +170,7 @@ def test_api_url(test_settings):
 
 @pytest.fixture(scope="function")
 def unconfigured_rmq_url(test_settings, test_rmq_url, test_api_url):
-    """ Create a new vhost with not exchange, queues or bindings
+    """Create a new vhost with not exchange, queues or bindings
     and destroy it after the test
     """
     test_id = secrets.token_hex(8)
@@ -181,5 +186,3 @@ def service_instance():
         service_name="test_service",
         instance_id=uuid4().hex,
     )
-
-

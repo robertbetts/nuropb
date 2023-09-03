@@ -20,12 +20,13 @@ class ServiceExample:
 
     @classmethod
     def _handle_event_(
-            cls,
-            topic: str,
-            event: dict,
-            target: list[str] | None = None,
-            context: dict | None = None,
-            trace_id: str | None = None) -> None:
+        cls,
+        topic: str,
+        event: dict,
+        target: list[str] | None = None,
+        context: dict | None = None,
+        trace_id: str | None = None,
+    ) -> None:
         _ = target, context, trace_id
         logger.debug(f"Received event {topic}:{event}")
 
@@ -79,7 +80,3 @@ class ServiceExample:
 
     def method_with_nuropb_exception(self, **kwargs) -> None:
         raise NuropbException("Test Nuropb Exception")
-
-
-
-

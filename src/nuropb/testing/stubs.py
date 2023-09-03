@@ -31,14 +31,12 @@ class ServiceExample:
         raise NuropbSuccess(
             result=success_result,
         )
-        return success_result
 
     def test_call_again_error(self, **kwargs: Any) -> str:
         self._method_call_count += 1
         success_result = f"response from {self._service_name}.test_call_again_error"
         if self.raise_call_again_error:
-            """ this is preventing the test from getting into an infinite loop
-            """
+            """this is preventing the test from getting into an infinite loop"""
             self.raise_call_again_error = False
             raise NuropbCallAgain("Test Call Again")
 
@@ -70,5 +68,3 @@ class ServiceExample:
             raise NuropbCallAgain("Test Call Again")
 
         return success_result
-
-

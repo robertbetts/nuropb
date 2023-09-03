@@ -20,8 +20,15 @@ from nuropb.interface import (
     ResponsePayloadDict,
     NuropbHandlingError,
     NuropbException,
-    TransportServicePayload, MessageCompleteFunction, TransportRespondPayload,
-    NUROPB_PROTOCOL_VERSION, AcknowledgeAction, EventPayloadDict, NuropbMessageType, NuropbCallAgain, NuropbSuccess,
+    TransportServicePayload,
+    MessageCompleteFunction,
+    TransportRespondPayload,
+    NUROPB_PROTOCOL_VERSION,
+    AcknowledgeAction,
+    EventPayloadDict,
+    NuropbMessageType,
+    NuropbCallAgain,
+    NuropbSuccess,
 )
 
 logger = logging.getLogger(__name__)
@@ -29,13 +36,9 @@ verbose = False
 
 
 def create_transport_responses_from_exceptions(
-    service_message: TransportServicePayload,
-    exception: Exception | BaseException
-) -> Tuple[
-        AcknowledgeAction,
-        list[TransportRespondPayload]
-     ]:
-    """ Create NuroPb response from an exception handling special cases like NuropbCallAgain
+    service_message: TransportServicePayload, exception: Exception | BaseException
+) -> Tuple[AcknowledgeAction, list[TransportRespondPayload]]:
+    """Create NuroPb response from an exception handling special cases like NuropbCallAgain
     and NuropbSuccess
 
     :param service_message:
@@ -68,72 +71,84 @@ def create_transport_responses_from_exceptions(
         target=None,
     )
     if isinstance(exception, NuropbCallAgain):
-        """ Acknowledge with a "nack" to requeue then message and send no TransportRespondPayload
-            This case will hold true for requests, commands and events
+        """Acknowledge with a "nack" to requeue then message and send no TransportRespondPayload
+        This case will hold true for requests, commands and events
         """
         acknowledgement = "nack"
 
     elif isinstance(exception, NuropbSuccess):
-        """ this is only applicable to requests as they have a response, for commands and events
+        """this is only applicable to requests as they have a response, for commands and events
         the acknowledgement will be "ack" and no TransportRespondPayload will be sent
-        
+
         only send responses for requests
         """
         acknowledgement = "ack"
         if service_type == "request":
             response = response_template.copy()
-            response.update({
-                "result": exception.result
-            })
-            transport_responses.append(TransportRespondPayload(
-                nuropb_protocol=NUROPB_PROTOCOL_VERSION,
-                correlation_id=correlation_id,
-                trace_id=trace_id,
-                ttl=None,
-                nuropb_type="response",
-                nuropb_payload=response,
-            ))
+            response.update({"result": exception.result})
+            transport_responses.append(
+                TransportRespondPayload(
+                    nuropb_protocol=NUROPB_PROTOCOL_VERSION,
+                    correlation_id=correlation_id,
+                    trace_id=trace_id,
+                    ttl=None,
+                    nuropb_type="response",
+                    nuropb_payload=response,
+                )
+            )
             """ Check the  NuropbSuccess if there are and events to be sent as well
             """
             if exception.events:
                 for event in exception.events:
                     event_payload = event_template.copy()
-                    event_payload.update({
-                        "topic": event["topic"],
-                        "event": event["payload"],
-                        "target": event["target"],
-                    })
-                    transport_responses.append(TransportRespondPayload(
-                        nuropb_protocol=NUROPB_PROTOCOL_VERSION,
-                        correlation_id=correlation_id,
-                        trace_id=trace_id,
-                        ttl=None,
-                        nuropb_type="event",
-                        nuropb_payload=event_payload,
-                    ))
+                    event_payload.update(
+                        {
+                            "topic": event["topic"],
+                            "event": event["payload"],
+                            "target": event["target"],
+                        }
+                    )
+                    transport_responses.append(
+                        TransportRespondPayload(
+                            nuropb_protocol=NUROPB_PROTOCOL_VERSION,
+                            correlation_id=correlation_id,
+                            trace_id=trace_id,
+                            ttl=None,
+                            nuropb_type="event",
+                            nuropb_payload=event_payload,
+                        )
+                    )
 
     elif isinstance(exception, (Exception, NuropbException)):
-        """ Process all other exceptions with a reject acknowledgement and create NuroPb response 
+        """Process all other exceptions with a reject acknowledgement and create NuroPb response
         for request messages only.
         """
         acknowledgement = "reject"
         if service_type == "request":
             response = response_template.copy()
-            error_description = exception.description if isinstance(exception, NuropbException) else str(exception)
-            response.update({
-                "error": {
-                    "error": type(exception).__name__,
-                    "description": error_description,
+            error_description = (
+                exception.description
+                if isinstance(exception, NuropbException)
+                else str(exception)
+            )
+            response.update(
+                {
+                    "error": {
+                        "error": type(exception).__name__,
+                        "description": error_description,
+                    }
                 }
-            })
-            transport_responses.append(TransportRespondPayload(
-                nuropb_protocol=NUROPB_PROTOCOL_VERSION,
-                correlation_id=correlation_id,
-                trace_id=trace_id,
-                ttl=None,
-                nuropb_type="response",
-                nuropb_payload=response,
-            ))
+            )
+            transport_responses.append(
+                TransportRespondPayload(
+                    nuropb_protocol=NUROPB_PROTOCOL_VERSION,
+                    correlation_id=correlation_id,
+                    trace_id=trace_id,
+                    ttl=None,
+                    nuropb_type="response",
+                    nuropb_payload=response,
+                )
+            )
 
     return acknowledgement, transport_responses
 
@@ -143,7 +158,7 @@ def handle_execution_result(
     result: Any,
     message_complete_callback: MessageCompleteFunction,
 ) -> None:
-    """ This function is called from the execute_request() to handle both synchronous and asynchronous results
+    """This function is called from the execute_request() to handle both synchronous and asynchronous results
 
     :param service_message:
     :param result:
@@ -163,17 +178,19 @@ def handle_execution_result(
 
     responses = []
     if service_message["nuropb_type"] == "event":
-        """ No requirement to handle the instance._event_handler result, only to positively acknowledge the event"""
+        """No requirement to handle the instance._event_handler result, only to positively acknowledge the event"""
         acknowledgement = "ack"
     else:
         if isinstance(result, (Exception, BaseException)):
-            """ Create NuroPb response from an exception, and update acknowledgement response
-            
-                Do not send a response for commands
+            """Create NuroPb response from an exception, and update acknowledgement response
+
+            Do not send a response for commands
             """
-            acknowledgement, transport_response = create_transport_responses_from_exceptions(
-                service_message=service_message,
-                exception=result
+            (
+                acknowledgement,
+                transport_response,
+            ) = create_transport_responses_from_exceptions(
+                service_message=service_message, exception=result
             )
             """ Do not send a response for commands
             """
@@ -181,8 +198,8 @@ def handle_execution_result(
                 responses.extend(transport_response)
 
         elif service_message["nuropb_type"] == "request":
-            """ Create NuroPb response from the service call result
-            
+            """Create NuroPb response from the service call result
+
             Do not send a response for commands
             """
             payload = ResponsePayloadDict(
@@ -194,14 +211,16 @@ def handle_execution_result(
                 context=service_message["nuropb_payload"]["context"],
                 warning=None,
             )
-            responses.append(TransportRespondPayload(
-                nuropb_protocol=NUROPB_PROTOCOL_VERSION,
-                correlation_id=service_message["correlation_id"],
-                trace_id=service_message["trace_id"],
-                ttl=None,
-                nuropb_type="response",
-                nuropb_payload=payload,
-            ))
+            responses.append(
+                TransportRespondPayload(
+                    nuropb_protocol=NUROPB_PROTOCOL_VERSION,
+                    correlation_id=service_message["correlation_id"],
+                    trace_id=service_message["trace_id"],
+                    ttl=None,
+                    nuropb_type="response",
+                    nuropb_payload=payload,
+                )
+            )
     message_complete_callback(responses, acknowledgement)
 
 
@@ -294,10 +313,14 @@ def execute_request(
             # Asynchronous responses
 
             if is_future(result):
-                raise ValueError("Tornado Future detected, please use asyncio.Future instead")
+                raise ValueError(
+                    "Tornado Future detected, please use asyncio.Future instead"
+                )
 
             def future_done_callback(future: Awaitable[Any]) -> None:
-                handle_execution_result(service_message, future, message_complete_callback)
+                handle_execution_result(
+                    service_message, future, message_complete_callback
+                )
 
             task = asyncio.ensure_future(result)
             """This check is important as there's a likelihood that the task is already done"""

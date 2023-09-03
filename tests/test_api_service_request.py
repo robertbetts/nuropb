@@ -66,7 +66,9 @@ async def test_request_response_fail(test_settings, test_rmq_url, service_instan
             trace_id=trace_id,
         )
     logging.info(f"response: {error}")
-    assert error.value.payload["error"]["description"] == "Unknown method test_method_fail"
+    assert (
+        error.value.payload["error"]["description"] == "Unknown method test_method_fail"
+    )
 
     method = "test_method"
     rpc_response = await client_api.request(
@@ -213,9 +215,12 @@ async def test_request_response_success(test_settings, test_rmq_url, service_ins
     await service_api.disconnect()
     assert service_api.connected is False
 
+
 @pytest.mark.skip
 @pytest.mark.asyncio
-async def test_request_response_call_again(test_settings, test_rmq_url, service_instance):
+async def test_request_response_call_again(
+    test_settings, test_rmq_url, service_instance
+):
     service_name = test_settings["service_name"]
     instance_id = uuid4().hex
     transport_settings = dict(
@@ -276,4 +281,3 @@ async def test_request_response_call_again(test_settings, test_rmq_url, service_
     assert client_api.connected is False
     await service_api.disconnect()
     assert service_api.connected is False
-

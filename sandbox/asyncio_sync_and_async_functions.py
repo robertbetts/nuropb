@@ -24,7 +24,7 @@ async def async_function(instance_id: str):
 
 def async_function_done(instance_id: str, future):
     result = future.result()
-    logger.info(f'task for async_function done: {result} {future.result()}')
+    logger.info(f"task for async_function done: {result} {future.result()}")
     assert result == instance_id
 
 
@@ -51,11 +51,14 @@ async def main(instance_id: str):
 
 
 def main_done(future):
-    logger.info(f'task done: {future.done()} {future.result()}')
+    logger.info(f"task done: {future.done()} {future.result()}")
 
 
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(filename)s:%(lineno)d: %(message)s")
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(filename)s:%(lineno)d: %(message)s",
+    )
     my_id = secrets.token_hex(8)
     ioloop = asyncio.get_event_loop()
     task = ioloop.create_task(main(my_id))

@@ -76,6 +76,3 @@ async def test_async_service_methods(test_settings, test_rmq_url, service_instan
     assert client_api.connected is False
     await service_api.disconnect()
     assert service_api.connected is False
-
-
-

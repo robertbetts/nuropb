@@ -18,7 +18,12 @@ logger = logging.getLogger(__name__)
 NUROPB_VERSION = "0.1.0"
 NUROPB_PROTOCOL_VERSION = "0.1.0"
 NUROPB_PROTOCOL_VERSIONS_SUPPORTED = ("0.1.0",)
-NUROPB_MESSAGE_TYPES = ("request", "response", "event", "command",)
+NUROPB_MESSAGE_TYPES = (
+    "request",
+    "response",
+    "event",
+    "command",
+)
 
 NuropbSerializeType = Literal["json"]
 NuropbMessageType = Literal["request", "response", "event", "command"]
@@ -141,10 +146,7 @@ class ResponsePayloadDict(TypedDict):
 
 
 PayloadDict = Union[
-    ResponsePayloadDict,
-    RequestPayloadDict,
-    CommandPayloadDict,
-    EventPayloadDict
+    ResponsePayloadDict, RequestPayloadDict, CommandPayloadDict, EventPayloadDict
 ]
 
 ServicePayloadTypes = Union[ResponsePayloadDict, CommandPayloadDict, EventPayloadDict]
@@ -152,25 +154,27 @@ ResponsePayloadTypes = Union[ResponsePayloadDict, EventPayloadDict]
 
 
 class TransportServicePayload(TypedDict):
-    """ Type[TransportServicePayload]: represents valid service instruction payload.
+    """Type[TransportServicePayload]: represents valid service instruction payload.
     Depending on the transport implementation, there wire encoding and serialization may
     be different, and some of the fields may be in the body or header of the message.
     """
-    nuropb_protocol: str            # nuropb defined and validated
-    correlation_id: str             # nuropb defined
-    trace_id: Optional[str]         # implementation defined
-    ttl: Optional[int]              # time to live in milliseconds
+
+    nuropb_protocol: str  # nuropb defined and validated
+    correlation_id: str  # nuropb defined
+    trace_id: Optional[str]  # implementation defined
+    ttl: Optional[int]  # time to live in milliseconds
     nuropb_type: NuropbMessageType
     nuropb_payload: Dict[str, Any]  # ServicePayloadTypes
 
 
 class TransportRespondPayload(TypedDict):
-    """ Type[TransportRespondPayload]: represents valid service response message,
+    """Type[TransportRespondPayload]: represents valid service response message,
     valid nuropb payload types are ResponsePayloadDict, and EventPayloadDict
     """
-    nuropb_protocol: str            # nuropb defined and validated
-    correlation_id: str             # nuropb defined
-    trace_id: Optional[str]         # implementation defined
+
+    nuropb_protocol: str  # nuropb defined and validated
+    correlation_id: str  # nuropb defined
+    trace_id: Optional[str]  # implementation defined
     ttl: Optional[int]
     nuropb_type: NuropbMessageType
     nuropb_payload: ResponsePayloadTypes
@@ -186,13 +190,17 @@ AcknowledgeCallbackFunction = Callable[[AcknowledgeAction], None]
     - action: AcknowledgeAction  # one of "ack", "nack", "reject"
 """
 
-MessageCompleteFunction = Callable[[List[TransportRespondPayload], AcknowledgeAction], None]
+MessageCompleteFunction = Callable[
+    [List[TransportRespondPayload], AcknowledgeAction], None
+]
 """ MessageCompleteFunction: represents a callable with the inputs:
     - response_messages: List[TransportRespondPayload]  # the responses to be sent
     - acknowledge_action: AcknowledgeAction  # one of "ack", "nack", "reject"
 """
 
-MessageCallbackFunction = Callable[[TransportServicePayload, MessageCompleteFunction, Dict[str, Any]], None]
+MessageCallbackFunction = Callable[
+    [TransportServicePayload, MessageCompleteFunction, Dict[str, Any]], None
+]
 """ MessageCallbackFunction: represents a callable with the inputs:
     - message: TransportServicePayload  # the decoded message
     - message_complete: Optional[AcknowledgeCallbackFunction]  # a function that is called to acknowledge the message
@@ -338,7 +346,7 @@ class NuropbAuthorizationError(NuropbException):
 
 
 class NuropbNotDeliveredError(NuropbException):
-    """ NuropbNotDeliveredError: when this exception is raised, the transport layer will ACK the
+    """NuropbNotDeliveredError: when this exception is raised, the transport layer will ACK the
     message and return an error response to the requester.
     """
 
@@ -374,6 +382,7 @@ class NuropbSuccess(NuropbException):
     command or request. Events will only be sent to the transports layer after the successful
     processing of a service message.
     """
+
     result: Any
     payload: ResponsePayloadDict | None
     events: List[EventType] = []
@@ -442,10 +451,10 @@ class NuropbInterface(ABC):
         raise NotImplementedError()
 
     def receive_transport_message(
-            self,
-            service_message: TransportServicePayload,
-            message_complete_callback: MessageCompleteFunction,
-            metadata: Dict[str, Any],
+        self,
+        service_message: TransportServicePayload,
+        message_complete_callback: MessageCompleteFunction,
+        metadata: Dict[str, Any],
     ) -> None:
         """handle_message: does the processing of a NuroPb message received from the transport
         layer.
@@ -549,9 +558,6 @@ class NuropbInterface(ABC):
         :param event: the message to publish, must be easily serializable to JSON
         :param context: additional information that represent the context in which the event is executed.
                         The must be easily serializable to JSON.
-        :param ttl: expiry is the time in milliseconds that the message will be kept on the queue before being moved
-                    to the dead letter queue. If None, then the message expiry configured on the transport is used.
-                    defaulted to 0 (no expiry) for events
         :param trace_id: an identifier to trace the request over the network (e.g. uuid4 hex string)
         :return: None
         """
