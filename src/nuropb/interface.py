@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from abc import ABC
 from typing import (
@@ -9,11 +10,16 @@ from typing import (
     Literal,
     Type,
     Union,
+    List,
 )
 
 logger = logging.getLogger()
 
-NuropbInterfaceVersion = Literal["0.1.0"]
+NUROPB_VERSION = "0.1.0"
+NUROPB_PROTOCOL_VERSION = "0.1.0"
+NUROPB_PROTOCOL_VERSIONS_SUPPORTED = ("0.1.0",)
+NUROPB_MESSAGE_TYPES = ("request", "response", "event", "command",)
+
 NuropbSerializeType = Literal["json"]
 NuropbMessageType = Literal["request", "response", "event", "command"]
 
@@ -35,68 +41,168 @@ NuropbLifecycleState = Literal[
 ]
 
 
-class BasePayloadDict(TypedDict):
+class ErrorDescriptionType(TypedDict):
+    error: str
+    description: Optional[str]
+    context: Optional[Dict[str, Any]]
+
+
+class EventType(TypedDict):
+    """For compatibility with better futureproof serialisation support, Any payload type is
+    supported.It is encouraged to use a json compatible key/value Type e.g. Dict[str, Any]
+
+    :target: is currently provided here as an aid for the implementation, there are use cases
+    where events are targeted to a specified audience or list or targets. In the NuroPb paradigm,
+    targets could be individual users or other services. A service would represent the service
+    as a whole, NOT any individual instance of that service.
+
+    It is also advised not to use NuroPb for communication between instances of a service.
+
+    Reference the notes on EventPayloadDict
+    """
+
+    topic: str
+    payload: Any
+    target: Optional[List[Any]]
+
+
+class RequestPayloadDict(TypedDict):
+    """Type[RequestPayloadDict]: represents a request that is sent to a service:
+    A request has a response, it is acknowledged by the transport layer after the destination
+    service has handled the request.
+
+    REMINDER FOR FUTURE: It is very tempting to support the Tuple[...,Any] for the
+    param key. There is much broader downstream compatibility in keeping this as a
+    dictionary / key-value mapping.
+    """
+
+    tag: Literal["request"]
     correlation_id: str
     context: Dict[str, Any]
     trace_id: Optional[str]
-
-
-class RequestPayloadDict(BasePayloadDict):
-    tag: Literal["request"]
     service: str
     method: str
     params: Dict[str, Any]
     reply_to: str
 
 
-class ResponsePayloadDict(BasePayloadDict):
+class CommandPayloadDict(TypedDict):
+    """Type[CommandPayloadDict]: represents a command that is sent to a service:
+    A command has no response, it is acked immediately by the transport layer. The
+    originator of the command has now knowledge of the execution of the command. If
+    a response is required, a request should be used.
+
+    A command is useful when used as a type of directed event.
+
+    REMINDER FOR FUTURE: It is very tempting to support the Tuple[...,Any] for the
+    param key. There is much broader downstream compatibility in keeping this as a
+    dictionary / key-value mapping.
+    """
+
+    tag: Literal["command"]
+    correlation_id: str
+    context: Dict[str, Any]
+    trace_id: Optional[str]
+    service: str
+    method: str
+    params: Dict[str, Any]
+    reply_to: str
+
+
+class EventPayloadDict(TypedDict):
+    """Type[EventPayloadDict]: represents an event that is published to a topic:
+
+    :target: is currently provided here as an aid for the implementation, there are use cases
+    where events are targeted to a specified audience or list or targets. In the NuroPb paradigm,
+    targets could be individual users or other services. A service would represent the service
+    as a whole, NOT any individual instance of that service.
+
+    Reference the notes on EventType
+    """
+
+    tag: Literal["event"]
+    correlation_id: str
+    context: Dict[str, Any]
+    trace_id: Optional[str]
+    topic: str
+    event: Any
+    target: Optional[List[Any]]
+
+
+class ResponsePayloadDict(TypedDict):
+    """Type[ResponsePayloadDict]: represents a response to a request:"""
+
     tag: Literal["response"]
+    correlation_id: str
+    context: Dict[str, Any]
+    trace_id: Optional[str]
     result: Any
     error: Optional[Dict[str, Any]]
     warning: Optional[str]
-
-
-class CommandPayloadDict(BasePayloadDict):
-    tag: Literal["command"]
-    service: str
-    method: str
-    params: Dict[str, Any]
-    reply_to: str
-
-
-class EventPayloadDict(BasePayloadDict):
-    tag: Literal["event"]
-    topic: str
-    event: Dict[str, Any]
-
-
-class UnknownPayloadDict(BasePayloadDict):
-    tag: Literal["unknown"]
-    payload: Dict[str, Any]
 
 
 PayloadDict = Union[
     ResponsePayloadDict,
     RequestPayloadDict,
     CommandPayloadDict,
-    EventPayloadDict,
-    UnknownPayloadDict,
+    EventPayloadDict
 ]
 
+ServicePayloadTypes = Union[ResponsePayloadDict, CommandPayloadDict, EventPayloadDict]
+ResponsePayloadTypes = Union[ResponsePayloadDict, EventPayloadDict]
 
-AcknowledgeActions = Literal["ack", "nack", "reject"]
+
+class TransportServicePayload(TypedDict):
+    """ Type[TransportServicePayload]: represents valid service instruction payload.
+    Depending on the transport implementation, there wire encoding and serialization may
+    be different, and some of the fields may be in the body or header of the message.
+    """
+    nuropb_protocol: str            # nuropb defined and validated
+    correlation_id: str             # nuropb defined
+    trace_id: Optional[str]         # implementation defined
+    ttl: Optional[int]              # time to live in milliseconds
+    nuropb_type: NuropbMessageType
+    nuropb_payload: Dict[str, Any]  # ServicePayloadTypes
 
 
-MessageCallbackType = Callable[
-    [PayloadDict, Optional[Callable[[AcknowledgeActions], None]]], None
-]
-""" Type[BasePayloadDict]: represents a callable with a single argument of type NuropbMessageDict :
+class TransportRespondPayload(TypedDict):
+    """ Type[TransportRespondPayload]: represents valid service response message,
+    valid nuropb payload types are ResponsePayloadDict, and EventPayloadDict
+    """
+    nuropb_protocol: str            # nuropb defined and validated
+    correlation_id: str             # nuropb defined
+    trace_id: Optional[str]         # implementation defined
+    ttl: Optional[int]
+    nuropb_type: NuropbMessageType
+    nuropb_payload: ResponsePayloadTypes
+
+
+ResultFutureResponsePayload = asyncio.Future[ResponsePayloadDict]
+ResultFutureAny = asyncio.Future[Any]
+
+
+AcknowledgeAction = Literal["ack", "nack", "reject"]
+AcknowledgeCallbackFunction = Callable[[AcknowledgeAction], None]
+""" AcknowledgeCallbackFunction: represents a callable with the inputs:
+    - action: AcknowledgeAction  # one of "ack", "nack", "reject"
 """
 
+MessageCompleteFunction = Callable[[List[TransportRespondPayload], AcknowledgeAction], None]
+""" MessageCompleteFunction: represents a callable with the inputs:
+    - response_messages: List[TransportRespondPayload]  # the responses to be sent
+    - acknowledge_action: AcknowledgeAction  # one of "ack", "nack", "reject"
+"""
 
-ConnectionCallbackType = Callable[[Type["NuropbInterface"], str, str], None]
-""" ConnectionCallbackType: represents a callable with the inputs:
-    - instance: NuropbInterface
+MessageCallbackFunction = Callable[[TransportServicePayload, MessageCompleteFunction, Dict[str, Any]], None]
+""" MessageCallbackFunction: represents a callable with the inputs:
+    - message: TransportServicePayload  # the decoded message
+    - message_complete: Optional[AcknowledgeCallbackFunction]  # a function that is called to acknowledge the message
+    - metadata: Dict[str: Any]  # the context of the message
+"""
+
+ConnectionCallbackFunction = Callable[[Type["NuropbInterface"], str, str], None]
+""" ConnectionCallbackFunction: represents a callable with the inputs:
+    - instance: type of NuropbInterface
     - status: str  # the status of the connection (connected, disconnected)
     - reason: str  # the reason for the connection status change
 """
@@ -109,18 +215,26 @@ class NuropbException(Exception):
     present when the exception was raised.
     """
 
+    description: str
     lifecycle: NuropbLifecycleState | None
-    payload: PayloadDict | None
-    exception: Exception | None
+    payload: PayloadDict | TransportServicePayload | TransportRespondPayload | None
+    exception: Exception | BaseException | None
 
     def __init__(
         self,
-        message: Optional[str] = None,
+        description: Optional[str] = None,
         lifecycle: Optional[NuropbLifecycleState] = None,
         payload: Optional[PayloadDict] = None,
         exception: Optional[Exception] = None,
     ):
-        super().__init__(message)
+        if description is None:
+            description = (
+                f" {exception}"
+                if exception is not None
+                else f"{self.__class__.__name__}"
+            )
+        super().__init__(description)
+        self.description = description
         self.lifecycle = lifecycle
         self.payload = payload
         self.exception = exception
@@ -176,6 +290,8 @@ class NuropbDeprecatedError(NuropbHandlingError):
     Events will be rejected with a NACK with requeue=False.
     """
 
+    pass
+
 
 class NuropbValidationError(NuropbException):
     """NuropbValidationError: represents an error that occurred during the validation of a
@@ -184,6 +300,8 @@ class NuropbValidationError(NuropbException):
     An error response is returned to the requester ONLY for requests and commands.
     Events will be rejected with a NACK with requeue=False.
     """
+
+    pass
 
 
 class NuropbAuthenticationError(NuropbException):
@@ -220,9 +338,22 @@ class NuropbAuthorizationError(NuropbException):
     """
 
 
+class NuropbNotDeliveredError(NuropbException):
+    """ NuropbNotDeliveredError: when this exception is raised, the transport layer will ACK the
+    message and return an error response to the requester.
+    """
+
+
 class NuropbCallAgain(NuropbException):
     """NuropbCallAgain: when this exception is raised, the transport layer will NACK the message
     and schedule it to be redelivered after a delay. The delay is determined by the transport layer.
+    This will result in a forced repeated call of the original service request, with the same
+    correlation_id and trace_id.
+
+    WARNING: with request messages, if a response has been returned, then this pattern
+             SHOULD NOT be used. The requester will receive the same response again, which will be
+             ignored as an unpaired response. if the underlying service method has no idempotence
+             guarantees, the service could end up in an inconsistent state.
     """
 
     pass
@@ -230,14 +361,41 @@ class NuropbCallAgain(NuropbException):
 
 class NuropbSuccess(NuropbException):
     """NuropbSuccessError: when this exception is raised, the transport layer will ACK the message
-    and return a success response to the requester. This is useful when the request is a command
-    or event and is executed asynchronously.
+    and return a success response if service payload is a 'request'. This is useful when the request
+    is a command or event and is executed asynchronously.
 
     There are some use cases where the service may want to return a success response irrespective
     to the handling of the request.
-    """
 
-    pass
+    A useful example is to short circuit processing when an outcome can be predetermined from the
+    inputs alone. For end to end request-response consistency, this class must be instantiated with
+    ResponsePayloadDict that contains a result consistent with the method and inputs provided.
+
+    Another use case is for the transmission of events raised during the execution of an event,
+    command or request. Events will only be sent to the transports layer after the successful
+    processing of a service message.
+    """
+    result: Any
+    payload: ResponsePayloadDict | None
+    events: List[EventType] = []
+
+    def __init__(
+        self,
+        result: Any,
+        description: Optional[str] = None,
+        payload: ResponsePayloadDict = None,
+        lifecycle: Optional[NuropbLifecycleState] = None,
+        events: Optional[List[EventType]] = None,
+    ):
+        super().__init__(
+            description=description,
+            lifecycle=lifecycle,
+            payload=payload,
+            exception=None,
+        )
+        self.result = result
+        self.payload = payload
+        self.events = [] if events is None else events
 
 
 class NuropbInterface(ABC):
@@ -245,6 +403,7 @@ class NuropbInterface(ABC):
 
     _service_name: str
     _instance_id: str
+    _service_instance: object
 
     @property
     def service_name(self) -> str:
@@ -283,24 +442,32 @@ class NuropbInterface(ABC):
         """
         raise NotImplementedError()
 
-    def handle_message(self, request: PayloadDict) -> None:
-        """handle_message: does the processing of a decoded message received from the transport layer.
-
-        Both response, request, command and event messages are handled by this method in the transport
+    def receive_transport_message(
+            self,
+            service_message: TransportServicePayload,
+            message_complete_callback: MessageCompleteFunction,
+            metadata: Dict[str, Any],
+    ) -> None:
+        """handle_message: does the processing of a NuroPb message received from the transport
         layer.
 
-        If there is a failure while a service handles a request or command, a response that includes
-        the details of the error is returned to the requester or originator.
+        All response, request, command and event messages received from the transport layer are
+        handled here.
 
-        There are Exceptions that can be raised by the service instance that will influence the
-        further lifecycle flow of the message. These are:
+        For failures service messages are handled, other than for events, a response including
+        details of the error is returned to the flow originator.
+
+        The Exception type raised during the message handling influences the lifecycle flow:
+        Some of these could be:
         - NuropbTimeoutError
         - NuropbHandlingError
         - NuropbAuthenticationError
         - NuropbCallAgain
         - NuropbSuccess
 
-        :param request: the request
+        :param service_message: TransportServicePayload
+        :param message_complete_callback: MessageCompleteFunction
+        :param metadata: Dict[str, Any] - metric gathering information
         :return: None
         """
         raise NotImplementedError()
@@ -369,7 +536,6 @@ class NuropbInterface(ABC):
         topic: str,
         event: Any,
         context: Dict[str, Any],
-        ttl: Optional[int] = None,
         trace_id: Optional[str] = None,
     ) -> None:
         """publish_event: publishes an event to the transport layer. the event sender should not have

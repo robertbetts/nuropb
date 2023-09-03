@@ -1,4 +1,5 @@
-from typing import Dict, Optional, Any, Union, Awaitable, Callable
+import asyncio
+from typing import Dict, Optional, Any, Union, Callable, cast
 from uuid import uuid4
 import logging
 from asyncio import Future
@@ -10,9 +11,14 @@ from nuropb.interface import (
     ResponsePayloadDict,
     RequestPayloadDict,
     EventPayloadDict,
-    AcknowledgeActions,
+    AcknowledgeAction,
+    NuropbSuccess,
+    NuropbCallAgain,
+    NuropbHandlingError,
+    ResultFutureResponsePayload, TransportServicePayload, MessageCompleteFunction, NUROPB_PROTOCOL_VERSION
 )
 from nuropb.rmq_transport import RMQTransport, encode_payload
+from nuropb.service_handlers import execute_request, handle_execution_result
 
 logger = logging.getLogger()
 
@@ -20,34 +26,72 @@ logger = logging.getLogger()
 class RMQAPI(NuropbInterface):
     """RMQAPI: A NuropbInterface implementation that uses RabbitMQ as the underlying transport."""
 
-    _response_futures: Dict[str, Any]
+    _mesh_name: str
+    _connection_name: str
+    _response_futures: Dict[str, ResultFutureResponsePayload]
     _transport: RMQTransport
     _rpc_exchange: str
     _events_exchange: str
+    _service_instance: object | None
     _default_ttl: int
     _client_only: bool
+    _ioloop: asyncio.AbstractEventLoop | None
 
     def __init__(
         self,
-        service_name: str,
-        instance_id: str,
         amqp_url: str,
-        client_only: bool = False,
+        service_name: str | None = None,
+        instance_id: str | None = None,
+        service_instance: object | None = None,
         rpc_exchange: Optional[str] = None,
         events_exchange: Optional[str] = None,
         transport_settings: Optional[Dict[str, Any]] = None,
+        ioloop: Optional[asyncio.AbstractEventLoop] = None,
     ):
         """RMQAPI: A NuropbInterface implementation that uses RabbitMQ as the underlying transport."""
 
-        self._service_name = service_name
-        self._instance_id = instance_id
+        vhost = amqp_url.split("/")[-1]
+        if not vhost:
+            raise ValueError("Invalid amqp_url, missing vhost")
+        self._mesh_name = vhost
+
+        """ If a service_name is not provided, then the service is a client only and will not be able 
+        to register for messages on service exchanges: rpc and events.
+        """
+        self._instance_id = instance_id if instance_id is not None else uuid4().hex
+
+        if service_name is None:
+            self._client_only = True
+            self._connection_name = f"{vhost}-client-{instance_id}"
+            self._service_name = self._connection_name
+        else:
+            self._client_only = False
+            self._connection_name = f"{vhost}-{service_name}-{instance_id}"
+            self._service_name = service_name
+
+        if not self._client_only and service_instance is None:
+            raise ValueError(
+                "A service instance must be provided when starting in service mode"
+            )
+        self._service_instance = service_instance
 
         transport_settings = {} if transport_settings is None else transport_settings
+        if self._client_only:
+            transport_settings["client_only"] = True
+
         default_ttl = transport_settings.get("default_ttl", None)
+
 
         self._response_futures = {}
         self._default_ttl = 60 * 60 * 1000 if default_ttl is None else default_ttl
-        self._client_only = client_only
+
+        self._api_connected = False
+        self._ioloop = ioloop
+
+        if not self._client_only and self._service_instance is None:
+            logger.warning(
+                "No service instance provided, service will not be able to handle requests"
+            )
 
         transport_settings.update(
             {
@@ -57,6 +101,7 @@ class RMQAPI(NuropbInterface):
                 "message_callback": self.receive_transport_message,
                 "rpc_exchange": rpc_exchange,
                 "events_exchange": events_exchange,
+                "ioloop": ioloop,
             }
         )
         self._transport = RMQTransport(**transport_settings)
@@ -95,7 +140,12 @@ class RMQAPI(NuropbInterface):
         """connect: connects to the underlying transport
         :return: None
         """
-        await self._transport.start()
+        if not self.connected:
+            await self._transport.start()
+            # task = asyncio.create_task(self.keep_loop_active())
+            # task.add_done_callback(lambda _: None)
+        else:
+            logger.warning("Already connected")
 
     async def disconnect(self) -> None:
         """disconnect: disconnects from the underlying transport
@@ -103,67 +153,82 @@ class RMQAPI(NuropbInterface):
         """
         await self._transport.stop()
 
+    async def keep_loop_active(self) -> None:
+        """ keep_loop_active: keeps the asyncio loop active while the transport is connected
+
+        The factor for introducing this method is that during pytest, the asyncio loop
+        is not always running when expected. there is an 1 cost with this delay, that will
+        impact the performance of the service.
+        TODO: investigate this further and only activate this method when required.
+
+        :return:
+        """
+        logger.info("keeping_loop_active() is starting")
+        while self.connected:
+            await asyncio.sleep(0.001)
+        logger.debug("keeping_loop_active() is stopping")
+
     def receive_transport_message(
         self,
-        message: PayloadDict,
-        acknowledge_function: Optional[Callable[[AcknowledgeActions], None]],
+        service_message: TransportServicePayload,
+        message_complete_callback: MessageCompleteFunction,
+        metadata: Dict[str, Any],
     ) -> None:
-        """_received_message_over_transport: handles a messages received from the transport and routes it to the
-            appropriate handler
+        """ receive_transport_message: handles a messages received from the transport layer
+            for processing by the service instance. Both incoming service messages and response
+            messages pass through this method.
+
         :return: None
         """
-        if message["tag"] == "request" or message["tag"] == "command":
+        if service_message["nuropb_type"] == "response":
+            response_payload: ResponsePayloadDict = cast(ResponsePayloadDict, service_message["nuropb_payload"])
             logger.debug(
-                f"Received {message['tag']}: {message['service']}.{message['method']}"
+                f"Received response.  "
+                f"trace_id: {service_message['trace_id']} "
+                f"correlation_id: {service_message['correlation_id']}"
             )
-
-            # TODO: Implement request and command execution here
-            """ Echo sample response
-            """
-            response_message: ResponsePayloadDict = {
-                "tag": "response",
-                "correlation_id": message["correlation_id"],
-                "context": message["context"],
-                "trace_id": message["trace_id"],
-                "result": f"response from {message['service']}.{message['method']}",
-                "error": None,
-                "warning": None,
-            }
-            body = encode_payload(response_message, "json")
-            routing_key = message["reply_to"]
-            properties = {
-                "content_type": "application/json",
-                "correlation_id": message["correlation_id"],
-                "headers": {
-                    "nuropb_type": "response",
-                    "trace_id": message["trace_id"],
-                },
-            }
-            self._transport.send_message(
-                "", routing_key, body, properties=properties, mandatory=True
-            )
-            if acknowledge_function is not None:
-                acknowledge_function("ack")
-
-        elif message["tag"] == "event":
-            logger.debug("Received event: %s", message["topic"])
-            # TODO: Implement request and command execution here
-            if acknowledge_function is not None:
-                acknowledge_function("ack")
-
-        elif message["tag"] == "response":
-            logger.debug("Received response: %s", message["correlation_id"])
-            if message["correlation_id"] not in self._response_futures:
+            if service_message["correlation_id"] not in self._response_futures:
                 logger.warning(
-                    "Received an unpaired response, ignoring %s",
-                    message["correlation_id"],
+                    f"Received an unpaired response, ignoring "
+                    f"correlation_id: {service_message['correlation_id']}"
                 )
                 return
-            response_future = self._response_futures.pop(message["correlation_id"])
-            response_future.set_result(message)
+
+            # Setting the result on this future will complete "await api.request(...)"
+            try:
+                response_future = self._response_futures.pop(service_message["correlation_id"])
+                response_future.set_result(response_payload)
+            except Exception as error:
+                logging.exception(
+                    f"Error completing response future for trace_id: {service_message['trace_id']} "
+                    f"correlation_id: {service_message['correlation_id']} "
+                    f"error: {error}"
+                )
+
+            return
+
+        """ The logic below is only relevant for incoming service messages
+        """
+        if self._service_instance is None:
+            error_description = (
+                f"No service instance configured to handle the {service_message['nuropb_type']} instruction"
+            )
+            logger.warning(error_description)
+            response = NuropbHandlingError(
+                description=error_description,
+                lifecycle="service-handle",
+                payload=service_message["nuropb_payload"],
+            )
+            handle_execution_result(service_message, response, MessageCompleteFunction)
+            return
+
+        if service_message["nuropb_type"] in ("request", "command", "event"):
+            payload = service_message["nuropb_payload"]
+            logger.debug(f"Received {service_message['nuropb_type']}")
+            execute_request(self._service_instance, service_message, message_complete_callback)
 
         else:
-            logger.warning("Received an unknown message type: %s", message["tag"])
+            logger.warning("Received an unknown message type: %s", service_message["nuropb_type"])
 
     async def request(
         self,
@@ -181,8 +246,7 @@ class RMQAPI(NuropbInterface):
             expiry is the time in milliseconds that the message will be kept on the queue before being moved
             to the dead letter queue. If None, then the message expiry configured on the transport is used.
 
-
-            #TODO: Look into returning a dead letter exception for timeout or other errors that result
+            # TODO: Look into returning a dead letter exception for timeout or other errors that result
                 in the message being returned to dead letter queue.
 
         Parameters:
@@ -229,6 +293,7 @@ class RMQAPI(NuropbInterface):
             correlation_id=correlation_id,
             reply_to=self._transport.response_queue,
             headers={
+                "nuropb_protocol": NUROPB_PROTOCOL_VERSION,
                 "nuropb_type": "request",
                 "trace_id": trace_id,
             },
@@ -248,7 +313,7 @@ class RMQAPI(NuropbInterface):
         body = encode_payload(message, "json")
         routing_key = service
 
-        response_future: Awaitable[PayloadDict] = Future()
+        response_future: ResultFutureResponsePayload = Future()
         self._response_futures[correlation_id] = response_future
 
         # mandatory means that if it doesn't get routed to a queue then it will be returned vi self._on_message_returned
@@ -258,9 +323,11 @@ class RMQAPI(NuropbInterface):
             f"trace_id: {trace_id}\n"
             f"exchange: {self._transport.rpc_exchange}\n"
             f"routing_key: {routing_key}\n"
+            f"service: {service}\n"
+            f"method: {method}\n"
         )
         self._transport.send_message(
-            exchange=self._transport._rpc_exchange,
+            exchange=self._transport.rpc_exchange,
             routing_key=routing_key,
             body=body,
             properties=properties,
@@ -276,7 +343,7 @@ class RMQAPI(NuropbInterface):
             )
             logger.exception(error_message)
             raise NuropbMessageError(
-                message=error_message,
+                description=error_message,
                 lifecycle="client-handle",
                 payload=response,
                 exception=err,
@@ -285,7 +352,7 @@ class RMQAPI(NuropbInterface):
         if response["tag"] != "response":
             """This logic condition is prevented in the transport layer"""
             raise NuropbMessageError(
-                message=f"Unexpected response message type: {response['tag']}",
+                description=f"Unexpected response message type: {response['tag']}",
                 lifecycle="client-handle",
                 payload=response,
                 exception=None,
@@ -295,7 +362,7 @@ class RMQAPI(NuropbInterface):
             return response
         elif response["error"]:
             raise NuropbMessageError(
-                message=f"RPC service error: {response['error']}",
+                description=f"RPC service error: {response['error']}",
                 lifecycle="client-handle",
                 payload=response,
                 exception=None,
@@ -308,7 +375,6 @@ class RMQAPI(NuropbInterface):
         topic: str,
         event: Dict[str, Any],
         context: Dict[str, Any],
-        ttl: Optional[int] = None,
         trace_id: Optional[str] = None,
     ) -> None:
         """Broadcasts an event with the given 'topic'.
@@ -339,15 +405,14 @@ class RMQAPI(NuropbInterface):
 
         """
         correlation_id = uuid4().hex
-        ttl = 0 if ttl is None else ttl
         properties = dict(
             content_type="application/json",
             correlation_id=correlation_id,
             headers={
+                "nuropb_protocol": NUROPB_PROTOCOL_VERSION,
                 "nuropb_type": "event",
                 "trace_id": trace_id,
             },
-            expiration=f"{ttl}",
         )
         context["rmq_correlation_id"] = correlation_id
         message: EventPayloadDict = {
@@ -357,6 +422,7 @@ class RMQAPI(NuropbInterface):
             "context": context,
             "trace_id": trace_id,
             "correlation_id": correlation_id,
+            "target": None,
         }
         body = encode_payload(message, "json")
         routing_key = topic
@@ -364,7 +430,7 @@ class RMQAPI(NuropbInterface):
             "Sending event message: (%s - %s) (%s - %s)",
             correlation_id,
             trace_id,
-            self._transport.rpc_exchange,
+            self._transport.events_exchange,
             routing_key,
         )
         self._transport.send_message(
@@ -372,5 +438,5 @@ class RMQAPI(NuropbInterface):
             routing_key=routing_key,
             body=body,
             properties=properties,
-            mandatory=True,
+            mandatory=False,
         )

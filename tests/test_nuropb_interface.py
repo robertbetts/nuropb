@@ -1,8 +1,9 @@
-from typing import Dict, Any, Optional
+import asyncio
+from typing import Dict, Any, Optional, Callable
 from uuid import uuid4
 import pytest  # type: ignore
 
-from nuropb.interface import NuropbInterface, ResponsePayloadDict
+from nuropb.interface import NuropbInterface, ResponsePayloadDict, PayloadDict, AcknowledgeAction, RequestPayloadDict
 
 
 class TestTransport:
@@ -25,6 +26,8 @@ class TestInterface(NuropbInterface):
     _leader: bool
     _transport: object
 
+    _test_request_future: asyncio.Future[ResponsePayloadDict] | None
+
     def __init__(
         self,
         service_name: str,
@@ -35,6 +38,8 @@ class TestInterface(NuropbInterface):
         self._service_name = service_name
         self._instance_id = instance_id or uuid4().hex
         self._leader = True
+        self._test_request_future = None
+
         transport_settings.update(
             {
                 "service_name": self.service_name,
@@ -63,6 +68,34 @@ class TestInterface(NuropbInterface):
         """
         await self._transport.stop()
 
+    def receive_transport_message(
+            self,
+            message: PayloadDict,
+            acknowledge_function: Optional[Callable[[AcknowledgeAction], None]],
+    ) -> None:
+
+        if message["tag"] == "request":
+            result = f"expected request response from {message['service']}.{message['method']}"
+        elif message["tag"] == "command":
+            result = f"expected command response from {message['service']}.{message['method']}"
+        elif message["tag"] == "event":
+            result = None
+        else:
+            raise ValueError(f"unexpected message type: {message['tag']}")
+
+        if acknowledge_function:
+            acknowledge_function("ack")
+        response = ResponsePayloadDict(
+            tag="response",
+            result=result,
+            error=None,
+            correlation_id=message["correlation_id"],
+            trace_id=message["trace_id"],
+            context=message["context"],
+        )
+        if self._test_request_future:
+            self._test_request_future.set_result(response)
+
     async def request(
         self,
         service: str,
@@ -80,19 +113,26 @@ class TestInterface(NuropbInterface):
         :param context: additional arguments that represent the context attached to the request.
         :param ttl: the time to live of the request
         :param trace_id: the trace id
-        :param rpc_response: if True, the response is expected to be a RPC response, otherwise it is expected to be an
+        :param rpc_response: if True, the response is an expected RPC response, otherwise it is expected to be an
         event
         :return: ResponsePayloadDict
         """
-        result = f"expected response from {service}.{method}"
-        correlation_id = uuid4().hex
-        response = ResponsePayloadDict(
-            result=result,
-            error=None,
-            correlation_id=correlation_id,
+        request = RequestPayloadDict(
+            tag="request",
+            service=service,
+            method=method,
+            params=params,
+            correlation_id=uuid4().hex,
             trace_id=trace_id,
             context=context,
+            reply_to=""
         )
+
+        def acknowledge_function(action: AcknowledgeAction) -> None:
+            _ = action
+        self._test_request_future = asyncio.Future()
+        self.receive_transport_message(request, acknowledge_function)
+        response = await self._test_request_future
         return response
 
 
@@ -141,7 +181,7 @@ async def test_interface_send_request():
         ttl=ttl,
         trace_id=trace_id,
     )
-    assert response["result"] == f"expected response from {service}.{method}"
+    assert response["result"] == f"expected request response from {service}.{method}"
     assert response["error"] is None
     assert response["correlation_id"] is not None
     assert response["trace_id"] == trace_id

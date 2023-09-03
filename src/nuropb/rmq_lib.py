@@ -14,20 +14,38 @@ from nuropb.interface import PayloadDict, NuropbTransportError, NuropbLifecycleS
 logger = logging.getLogger()
 
 
-def amqp_url(
+def build_amqp_url(
     host: str, port: str | int, username: str, password: str, vhost: str
 ) -> str:
     """Creates an AMQP URL for connecting to RabbitMQ"""
     return f"amqp://{username}:{password}@{host}:{port}/{vhost}"
 
 
-def rmq_api_url(
+def build_rmq_api_url(
     scheme: str, host: str, port: str | int, username: str | None, password: str | None
 ) -> str:
     """Creates an HTTP URL for connecting to RabbitMQ management API"""
     if username is None or password is None:
         return f"{scheme}://{host}:{port}/api"
     return f"{scheme}://{username}:{password}@{host}:{port}/api"
+
+
+def rmq_api_url_from_amqp_url(
+    amqp_url: str, scheme: Optional[str] = None, port: Optional[int | str] = None
+) -> str:
+    """Creates an HTTP URL for connecting to RabbitMQ management API from an AMQP URL
+    :param amqp_url: the AMQP URL to use
+    :param scheme: the scheme to use, defaults to http
+    :param port: the port to use, defaults to 15672
+    :return: the RabbitMQ management API URL
+    """
+    url_parts = urlparse(amqp_url)
+    username = url_parts.username
+    password = url_parts.password
+    host = url_parts.hostname if url_parts.hostname else "localhost"
+    port = 15672 if port is None else port
+    scheme = "http" if scheme is None else scheme
+    return build_rmq_api_url(scheme, host, port, username, password)
 
 
 def management_api_session_info(
@@ -50,7 +68,7 @@ def management_api_session_info(
     :param verify: whether to verify the SSL certificate
     :return: a requests session
     """
-    api_url = rmq_api_url(scheme, host, port, username, password)
+    api_url = build_rmq_api_url(scheme, host, port, username, password)
     if bearer_token:
         headers["Authorization"] = f"Bearer {bearer_token}"
     headers["Content-Type"] = "application/json"
@@ -232,7 +250,7 @@ def nack_message(
     if channel is None or not channel.is_open:
         lifecycle = "service-handle" if lifecycle is None else lifecycle
         raise NuropbTransportError(
-            message="Unable to nack and requeue message, RMQ channel closed",
+            description="Unable to nack and requeue message, RMQ channel closed",
             lifecycle=lifecycle,
             payload=mesg,
             exception=error,
@@ -255,7 +273,7 @@ def reject_message(
     if channel is None or not channel.is_open:
         lifecycle = "service-handle" if lifecycle is None else lifecycle
         raise NuropbTransportError(
-            message="unable to reject message, RMQ channel closed",
+            description="unable to reject message, RMQ channel closed",
             lifecycle=lifecycle,
             payload=mesg,
             exception=error,
@@ -278,7 +296,7 @@ def ack_message(
     if channel is None or not channel.is_open:
         lifecycle = "service-handle" if lifecycle is None else lifecycle
         raise NuropbTransportError(
-            message="Unable to ack message, RMQ channel closed",
+            description="Unable to ack message, RMQ channel closed",
             lifecycle=lifecycle,
             payload=mesg,
             exception=error,

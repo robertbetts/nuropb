@@ -4,13 +4,13 @@ from uuid import uuid4
 import pytest
 
 from nuropb.rmq_api import RMQAPI
-from nuropb.rmq_config import ServiceContainer
+from nuropb.service_runner import ServiceContainer
 
 logger = logging.getLogger()
 
 
 @pytest.mark.asyncio
-async def test_rmq_api_service_mode(test_settings, test_rmq_url):
+async def test_rmq_api_service_mode(test_settings, test_rmq_url, test_api_url):
     service_name = test_settings["service_name"]
     instance_id = uuid4().hex
     transport_settings = dict(
@@ -30,7 +30,7 @@ async def test_rmq_api_service_mode(test_settings, test_rmq_url):
         client_only=True,
     )
     container = ServiceContainer(
-        rmq_api_url="http://guest:guest@localhost:15672/api",
+        rmq_api_url=test_api_url,
         instance=rmq_api,
         etcd_config=dict(
             host="localhost",

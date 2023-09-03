@@ -1,13 +1,12 @@
 """ This module provides the runtime configuration for the RabbitMQ transport.
 - NuroPb Service leader election
 - RMQ Exchange and Queue configuration
-- RMQ Queue binding configuration
 
-A service Leader is elected using etcd3. The leader is responsible for creating the RMQ Exchange and Queues,
+A service Leader is elected using etcd. The leader is responsible for creating the RMQ Exchange and Queues,
 and binding the Queues to the Exchange. Due to the additional administrative responsibilities, the leader's
-message prefetch size will be smaller relative to the other service instances.
+message prefetch size should be smaller relative to the other service instances.
 
-The service leader is also responsible for monitoring and managing overall service health.
+TODO: The service leader is also responsible for monitoring and managing overall service health.
 - if the service queue is not draining fast enough, the leader will signal for additional instances to be started.
 - if the service queue is draining too fast, the leader will signal for instances to be stopped.
 - Connections to RMQ that are initiating service messages with high error rates will be terminated.
@@ -32,12 +31,12 @@ from nuropb.rmq_transport import RMQTransport
 
 logger = logging.getLogger()
 
-LEADER_KEY = "/leader"
-LEASE_TTL = 15
+LEADER_KEY = "/leader"  # this key is prefixed with /nuropb/{service-name}
+LEASE_TTL = 15  # seconds
 
 
-class ServiceConfigState:
-    """ServiceConfigState represents the state of the service configuration."""
+class ServiceRunner:
+    """ServiceRunner represents the state of the service configuration."""
 
     service_name: str
     """ service_name: the name of the service. """
@@ -68,7 +67,7 @@ ContainerRunningState = Literal[
 ]
 
 
-class ServiceContainer(ServiceConfigState):
+class ServiceContainer(ServiceRunner):
     _instance: RMQAPI
     _rmq_api_url: str
     _service_name: str

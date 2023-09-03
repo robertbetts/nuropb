@@ -2,6 +2,8 @@ import pytest
 from uuid import uuid4
 import secrets
 import logging
+
+from nuropb.interface import NuropbMessageError
 from nuropb.rmq_api import RMQAPI
 from nuropb.rmq_lib import create_virtual_host, delete_virtual_host
 from nuropb.rmq_transport import ServiceNotConfigured
@@ -12,8 +14,8 @@ logger = logging.getLogger()
 
 def test_rmq_preparation(test_settings, test_rmq_url, test_api_url):
     """ Test that the RMQ instance is and can be correctly configured
-    - create virtual host should be idempotent
-    - delete virtual host should be idempotent
+    - create virtual host must be idempotent
+    - delete virtual host must be idempotent
     """
     tmp_url = f"{test_rmq_url}-{secrets.token_hex(8)}"
     create_virtual_host(test_api_url, tmp_url)
@@ -92,7 +94,7 @@ async def test_rmq_api_client_mode_unconfigured_rmq(test_settings, unconfigured_
 
 
 @pytest.mark.asyncio
-async def test_rmq_api_service_mode(test_settings, test_rmq_url):
+async def test_rmq_api_service_mode(test_settings, test_rmq_url, event_loop):
     service_name = test_settings["service_name"]
     instance_id = uuid4().hex
     transport_settings = dict(
@@ -117,76 +119,3 @@ async def test_rmq_api_service_mode(test_settings, test_rmq_url):
     assert rmq_api.connected is False
 
 
-@pytest.mark.asyncio
-async def test_request_response(test_settings, test_rmq_url):
-    service_name = test_settings["service_name"]
-    instance_id = uuid4().hex
-    transport_settings = dict(
-        dl_exchange=test_settings["dl_exchange"],
-        rpc_bindings=test_settings["rpc_bindings"],
-        event_bindings=test_settings["event_bindings"],
-        prefetch_count=test_settings["prefetch_count"],
-        default_ttl=test_settings["default_ttl"],
-    )
-    service_api = RMQAPI(
-        service_name=service_name,
-        instance_id=instance_id,
-        amqp_url=test_rmq_url,
-        rpc_exchange="test_rpc_exchange",
-        events_exchange="test_events_exchange",
-        transport_settings=transport_settings,
-    )
-    assert service_api.connected is False
-    await service_api.connect()
-    assert service_api.connected is True
-
-    service_name = "test_client"
-    instance_id = uuid4().hex
-    client_transport_settings = dict(
-        dl_exchange=test_settings["dl_exchange"],
-        rpc_bindings=[],
-        event_bindings=[],
-        prefetch_count=test_settings["prefetch_count"],
-        default_ttl=test_settings["default_ttl"],
-    )
-    client_api = RMQAPI(
-        service_name=service_name,
-        instance_id=instance_id,
-        amqp_url=test_rmq_url,
-        rpc_exchange="test_rpc_exchange",
-        events_exchange="test_events_exchange",
-        transport_settings=client_transport_settings,
-        client_only=True,
-    )
-    await client_api.connect()
-    assert client_api.connected is True
-    service = "test_service"
-    method = "test_method"
-    params = {"param1": "value1"}
-    context = {"context1": "value1"}
-    ttl = 60 * 30 * 1000
-    trace_id = uuid4().hex
-    logging.info(f"Requesting {service}.{method}")
-    response = await client_api.request(
-        service=service,
-        method=method,
-        params=params,
-        context=context,
-        ttl=ttl,
-        trace_id=trace_id,
-    )
-    logging.info(f"response: {response}")
-    assert response == f"response from {service}.{method}"
-    rpc_response = await client_api.request(
-        service=service,
-        method=method,
-        params=params,
-        context=context,
-        ttl=ttl,
-        trace_id=trace_id,
-        rpc_response=False,
-    )
-    logging.info(f"response: {rpc_response}")
-    assert rpc_response["result"] == f"response from {service}.{method}"
-    await client_api.disconnect()
-    assert client_api.connected is False

@@ -1,12 +1,12 @@
 [tool.poetry]
 name = "nuropb"
-version = "0.0.1"
-description = ""
+version = "0.1.0"
+description = "NuroPb is a messaging pattern for building distributed systems."
 authors = ["Robert Betts <robert.betts@genoa.io>"]
 readme = "README.md"
 homepage = "https://github.com/robertbetts/nuropb"
 repository = "https://github.com/robertbetts/nuropb"
-keywords = ["python", "api", "event", "rpc", "distributed"]
+keywords = ["python", "api", "event", "rpc", "distributed", "edd"]
 classifiers = [
     'Programming Language :: Python :: 3.11',
     'Programming Language :: Python :: 3.10',
@@ -48,8 +48,8 @@ testpaths = ["tests"]
 [tool.pytest.ini_options]
 log_cli = true
 log_level = "DEBUG"
-log_cli_format = "%(asctime)s %(levelname)s %(message)s"
-log_cli_date_format = "%Y-%m-%d %H:%M:%S"
+log_cli_format = " %(levelname).1s %(asctime)s,%(msecs)d %(module)s %(lineno)s %(message)s"
+log_cli_date_format = "%d %H:%M:%S"
 
 [tool.coverage.run]
 omit = [".*", "*/site-packages/*"]
