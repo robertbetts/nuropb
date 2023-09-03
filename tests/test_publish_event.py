@@ -37,7 +37,6 @@ async def test_event_publish(test_settings, test_rmq_url_static, service_instanc
     assert service_api.connected is True
     logging.info(f"SERVICE API CONNECTED - {service_api.instance_id}")
 
-    service_name = "test_client"
     instance_id = uuid4().hex
     client_transport_settings = dict(
         dl_exchange=test_settings["dl_exchange"],
@@ -47,13 +46,11 @@ async def test_event_publish(test_settings, test_rmq_url_static, service_instanc
         default_ttl=test_settings["default_ttl"],
     )
     client_api = RMQAPI(
-        service_name=service_name,
         instance_id=instance_id,
         amqp_url=test_rmq_url,
         rpc_exchange="test_rpc_exchange",
         events_exchange="test_events_exchange",
         transport_settings=client_transport_settings,
-        client_only=True,
     )
     await client_api.connect()
     assert client_api.connected is True
@@ -69,7 +66,6 @@ async def test_event_publish(test_settings, test_rmq_url_static, service_instanc
         context=context,
         trace_id=trace_id,
     )
-    await asyncio.sleep(10)
     await client_api.disconnect()
     assert client_api.connected is False
     await service_api.disconnect()

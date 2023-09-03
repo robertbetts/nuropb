@@ -34,7 +34,7 @@ class RabbitMQConfiguration(TypedDict):
     events_exchange: str
     dl_exchange: str
     dl_queue: str
-    request_queue: str
+    service_queue: str
     response_queue: str
     rpc_bindings: List[str]
     event_bindings: List[str]
@@ -42,7 +42,7 @@ class RabbitMQConfiguration(TypedDict):
     client_only: bool
 
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 connection.PRODUCT = "NuroPb Distributed RPC-Event Library"
 """ TODO: configure the RMQ client connection attributes in the pika client properties.
@@ -51,6 +51,10 @@ See related TODO below in this module
 
 CONSUMER_CLOSED_WAIT_TIMEOUT = 10
 """ The wait when shutting down consumers before closing the connection
+"""
+
+verbose = False
+""" Set to True to enable module verbose logging
 """
 
 
@@ -147,7 +151,7 @@ class RMQTransport:
     _events_exchange: str
     _dl_exchange: str
     _dl_queue: str
-    _request_queue: str
+    _service_queue: str
     _response_queue: str
     _rpc_bindings: Set[str]
     _event_bindings: Set[str]
@@ -182,7 +186,7 @@ class RMQTransport:
         events_exchange: Optional[str] = None,
         dl_exchange: Optional[str] = None,
         dl_queue: Optional[str] = None,
-        request_queue: Optional[str] = None,
+        service_queue: Optional[str] = None,
         response_queue: Optional[str] = None,
         rpc_bindings: Optional[List[str] | Set[str]] = None,
         event_bindings: Optional[List[str] | Set[str]] = None,
@@ -202,7 +206,7 @@ class RMQTransport:
         :param str events_exchange: The name of the events exchange
         :param str dl_exchange: The name of the dead letter exchange
         :param str dl_queue: The name of the dead letter queue
-        :param str request_queue: The name of the requests queue
+        :param str service_queue: The name of the requests queue
         :param str response_queue: The name of the responses queue
         :param List[str] rpc_bindings: The list of RPC bindings
         :param List[str] event_bindings: The list of events bindings
@@ -222,8 +226,8 @@ class RMQTransport:
         self._consumer_tags = set()
 
         self._client_only = False if client_only is None else client_only
-        """ If client_only is True, then the transport will not attempt to configure a response queue. Handling
-        requests, commands are disabled. This is useful for testing and for clients that do not need to respond
+        """ If client_only is True, then the transport will not configure a service queue with
+        the handling of requests, commands and events disabled. 
         """
         if self._client_only:
             logger.info("Client only transport")
@@ -238,7 +242,7 @@ class RMQTransport:
         self._events_exchange = events_exchange or "nuropb-events-exchange"
         self._dl_exchange = dl_exchange or "nuropb-dl-exchange"
         self._dl_queue = dl_queue or f"nuropb-{self._service_name}-dl"
-        self._request_queue = request_queue or f"nuropb-{self._service_name}-service"
+        self._service_queue = service_queue or f"nuropb-{self._service_name}-service"
         self._response_queue = (
             response_queue or f"nuropb-{self._service_name}-{self._instance_id}-response"
         )
@@ -321,7 +325,7 @@ class RMQTransport:
             "events_exchange": self._events_exchange,
             "dl_exchange": self._dl_exchange,
             "dl_queue": self._dl_queue,
-            "request_queue": self._request_queue,
+            "service_queue": self._service_queue,
             "response_queue": self._response_queue,
             "rpc_bindings": list(self._rpc_bindings),
             "event_bindings": list(self._event_bindings),
@@ -364,13 +368,13 @@ class RMQTransport:
                 rpc_exchange=rmq_configuration["rpc_exchange"],
                 dl_exchange=rmq_configuration["dl_exchange"],
                 dl_queue=rmq_configuration["dl_queue"],
-                request_queue=rmq_configuration["request_queue"],
+                service_queue=rmq_configuration["service_queue"],
                 rpc_bindings=rmq_configuration["rpc_bindings"],
                 event_bindings=rmq_configuration["event_bindings"],
             )
             self._is_rabbitmq_configured = True
         except Exception as err:
-            logging.exception(
+            logger.exception(
                 f"Failed to configure RabbitMQ with the provided configuration:\n"
                 f"Error: {err}\n"
                 f" - amqp url: {obfuscate_credentials(amqp_url)}\n"
@@ -572,7 +576,7 @@ class RMQTransport:
         if isinstance(reason, ChannelClosedByBroker):
             logger.critical("Channel %i was closed by broker: %s", channel, reason)
             if reason.reply_code == 404:
-                logging.error(
+                logger.error(
                     f"""\n\n
 RabbitMQ channel closed by broker with reply_code: {reason.reply_code} and reply_text: {reason.reply_text}
 This is usually caused by a misconfiguration of the RabbitMQ broker.
@@ -585,7 +589,7 @@ Check that the following exchanges, queues and bindings exist:
     Exchange: {self._events_exchange}
     Exchange: {self._dl_exchange}
     Queue: {self._dl_queue}
-    Queue: {self._request_queue}
+    Queue: {self._service_queue}
     Queue: {self._response_queue}
     Bindings: {self._rpc_bindings}
     Bindings: {self._event_bindings}
@@ -598,35 +602,35 @@ Check that the following exchanges, queues and bindings exist:
                         )
                     )
 
-    def declare_request_queue(self) -> None:
+    def declare_service_queue(self) -> None:
         """Refresh the request queue on RabbitMQ by invoking the Queue.Declare RPC command. When it
-        is complete, the on_request_queue_declareok method will be invoked by pika.
+        is complete, the on_service_queue_declareok method will be invoked by pika.
 
         This call is idempotent and will not fail if the queue already exists.
         """
         if not self._client_only:
-            logger.info("Declaring request queue %s", self._request_queue)
+            logger.info("Declaring request queue %s", self._service_queue)
             if self._channel is None:
                 raise RuntimeError("RMQ transport channel is not open")
 
-            cb = functools.partial(self.on_request_queue_declareok, _userdata=self._request_queue)
-            request_queue_config = {
+            cb = functools.partial(self.on_service_queue_declareok, _userdata=self._service_queue)
+            service_queue_config = {
                 "durable": True,
                 "auto_delete": False,
                 "arguments": {"x-dead-letter-exchange": self._dl_exchange},
             }
             self._channel.queue_declare(
-                queue=self._request_queue, callback=cb, **request_queue_config
+                queue=self._service_queue, callback=cb, **service_queue_config
             )
         else:
             logger.info("Client only, not declaring request queue")
             # TODO: FIXME: Check that passing None in here is OK
             self.on_bindok(None, userdata=self._response_queue)
 
-    def on_request_queue_declareok(
+    def on_service_queue_declareok(
             self, frame: pika.frame.Method, _userdata: str
     ) -> None:
-        logger.info(f"Refreshing rpc bindings for service queue: {self._request_queue}")
+        logger.info(f"Refreshing rpc bindings for service queue: {self._service_queue}")
         if self._channel is None:
             raise RuntimeError("RMQ transport channel is not open")
 
@@ -637,9 +641,9 @@ Check that the following exchanges, queues and bindings exist:
                 f" on routing key {routing_key}"
             )
             self._channel.queue_bind(
-                self._request_queue, self._rpc_exchange, routing_key=routing_key
+                self._service_queue, self._rpc_exchange, routing_key=routing_key
             )
-        logger.info(f"Refreshing event bindings for service queue: {self._request_queue}")
+        logger.info(f"Refreshing event bindings for service queue: {self._service_queue}")
         for routing_key in self._event_bindings:
             logger.info(
                 f"Binding to"
@@ -647,7 +651,7 @@ Check that the following exchanges, queues and bindings exist:
                 f" on topic {routing_key}"
             )
             self._channel.queue_bind(
-                self._response_queue, self._events_exchange, routing_key=routing_key
+                self._service_queue, self._events_exchange, routing_key=routing_key
             )
         self.on_bindok(frame, userdata=self._response_queue)
 
@@ -681,7 +685,7 @@ Check that the following exchanges, queues and bindings exist:
         :param str|unicode _userdata: Extra user data (queue name)
         """
         logger.info("Response queue declared ok: %s", _userdata)
-        self.declare_request_queue()
+        self.declare_service_queue()
 
     def on_bindok(self, _frame: pika.frame.Method, userdata: str) -> None:
         """Invoked by pika when the Queue.Bind method has completed. At this
@@ -748,9 +752,9 @@ Check that the following exchanges, queues and bindings exist:
             self._consumer_tags.add(
                 self._channel.basic_consume(
                     on_message_callback=functools.partial(
-                        self.on_service_message, self._request_queue
+                        self.on_service_message, self._service_queue
                     ),
-                    queue=self._request_queue,
+                    queue=self._service_queue,
                 )
             )
 
@@ -778,7 +782,7 @@ Check that the following exchanges, queues and bindings exist:
             method: pika.spec.Basic.Return,
             properties: pika.spec.BasicProperties,
             body: bytes, # noqa
-            ):
+            ) -> None:
         """Called when message has been rejected by the server.
 
         callable callback: The function to call, having the signature callback(channel, method, properties, body)
@@ -792,22 +796,22 @@ Check that the following exchanges, queues and bindings exist:
         _ = channel, body
         correlation_id = properties.correlation_id
         trace_id = properties.headers.get("trace_id", "unknown")
-
-        logging.warning(
-            f"Could not route message with "
+        nuropb_type = properties.headers.get("nuropb_type", "unknown")
+        logger.warning(
+            f"Could not route {nuropb_type} message with "
             f"correlation_id: {correlation_id} "
             f"trace_id: {trace_id} "
             f": {method.reply_code}, {method.reply_text}"
         )
-
-        raise NuropbNotDeliveredError(
-            (
-                f"Could not route message with "
-                f"correlation_id: {correlation_id} "
-                f"trace_id: {trace_id} "
-                f": {method.reply_code}, {method.reply_text}"
+        if verbose:
+            raise NuropbNotDeliveredError(
+                (
+                    f"Could not route message {nuropb_type} with "
+                    f"correlation_id: {correlation_id} "
+                    f"trace_id: {trace_id} "
+                    f": {method.reply_code}, {method.reply_text}"
+                )
             )
-        )
 
     def send_message(
         self,
@@ -939,7 +943,7 @@ Check that the following exchanges, queues and bindings exist:
         :param metadata: information to drive message processing metrics
         :return: None
         """
-        logging.debug(f"metadata log: {metadata}")
+        logger.debug(f"metadata log: {metadata}")
 
     def on_service_message_complete(
             self,
@@ -989,7 +993,7 @@ Check that the following exchanges, queues and bindings exist:
         properties: pika.spec.BasicProperties,
         body: bytes,
     ) -> None:
-        """Invoked when a message is delivered to the request_queue.
+        """Invoked when a message is delivered to the service_queue.
 
         DESIGN PARAMETERS:
             - Incoming service messages handling (this) require a deliberate acknowledgement.
@@ -1042,7 +1046,11 @@ Check that the following exchanges, queues and bindings exist:
         :param pika.spec.BasicProperties properties: properties
         :param bytes body: The message body
         """
-        logger.debug(f"""MESSAGE FROM SERVICE QUEUE:
+        nuropb_type = properties.headers.get("nuropb_type", "")
+        if not verbose:
+            logger.debug(f"service message received: '{nuropb_type}'")
+        else:
+            logger.debug(f"""MESSAGE FROM SERVICE QUEUE:
 delivery_tag: {basic_deliver.delivery_tag}
 from_exchange: {basic_deliver.exchange}
 from_queue: {queue_name}
@@ -1053,7 +1061,6 @@ content_type: {properties.content_type}
 nuropb_type: {properties.headers.get('nuropb_type', '')}""")
         """ Handle for the unknown message type and reply to the originator if possible
         """
-        nuropb_type = properties.headers.get('nuropb_type', '')
         nuropb_version = properties.headers.get('nuropb_version', '')
         metadata = {
             "start_time": time.time(),
@@ -1067,7 +1074,7 @@ nuropb_type: {properties.headers.get('nuropb_type', '')}""")
             """Exceptions caught here are treated as permanent failures, ack the message and send 
                 error response is possible
             """
-            logging.exception(f"service message decode error: {error}")
+            logger.exception(f"service message decode error: {error}")
             self.acknowledge_service_message(channel, basic_deliver.delivery_tag, "reject")
 
             # TODO: Send response if message has properties.reply_to and better logging
@@ -1104,7 +1111,7 @@ nuropb_type: {properties.headers.get('nuropb_type', '')}""")
         except Exception as error:
             """Exceptions caught here are treated as permanent failures, ack the message and send error response
             """
-            logging.exception(f"service message handling error: {error}")
+            logger.exception(f"service message handling error: {error}")
             self.acknowledge_service_message(channel, basic_deliver.delivery_tag, "reject")
 
             # TODO: Send response if message has properties.reply_to and better logging
@@ -1137,21 +1144,24 @@ nuropb_type: {properties.headers.get('nuropb_type', '')}""")
         :param pika.spec.BasicProperties properties: properties
         :param bytes body: The message body
         """
-        logger.debug(
-            (
-                f"MESSAGE FROM RESPONSE QUEUE:\n"
-                f"delivery_tag: {basic_deliver.delivery_tag}\n"
-                f"service_name: {self._service_name}\n"
-                f"instance_id: {self._instance_id}\n"
-                f"exchange: {basic_deliver.exchange}\n"
-                f"routing_key: {basic_deliver.routing_key}\n"
-                f"correlation_id: {properties.correlation_id}\n"
-                f"trace_id: {properties.headers.get('trace_id', '')}\n"
-                f"content_type: {properties.content_type}\n"
+        nuropb_type = properties.headers.get("nuropb_type", "")
+        if not verbose:
+            logger.debug(f"response message received: '{nuropb_type}'")
+        else:
+            logger.debug(
+                (
+                    f"MESSAGE FROM RESPONSE QUEUE:\n"
+                    f"delivery_tag: {basic_deliver.delivery_tag}\n"
+                    f"service_name: {self._service_name}\n"
+                    f"instance_id: {self._instance_id}\n"
+                    f"exchange: {basic_deliver.exchange}\n"
+                    f"routing_key: {basic_deliver.routing_key}\n"
+                    f"correlation_id: {properties.correlation_id}\n"
+                    f"trace_id: {properties.headers.get('trace_id', '')}\n"
+                    f"content_type: {properties.content_type}\n"
+                )
             )
-        )
         try:
-            nuropb_type = properties.headers.get('nuropb_type', '')
             metadata = {
                 "start_time": time.time(),
                 "instance_id": self._instance_id,
@@ -1207,7 +1217,7 @@ nuropb_type: {properties.headers.get('nuropb_type', '')}""")
                 )
 
             if len(self._consumer_tags) != 0:
-                logging.error(
+                logger.error(
                     "Timed out while waiting for all consumers to gracefully close"
                 )
 

@@ -12,8 +12,7 @@
 """
 import asyncio
 import logging
-from typing import Any, Tuple, List
-import functools
+from typing import Any, Tuple, List, Awaitable
 
 from tornado.concurrent import is_future
 
@@ -21,11 +20,12 @@ from nuropb.interface import (
     ResponsePayloadDict,
     NuropbHandlingError,
     NuropbException,
-    TransportServicePayload, MessageCompleteFunction, ServicePayloadTypes, TransportRespondPayload,
+    TransportServicePayload, MessageCompleteFunction, TransportRespondPayload,
     NUROPB_PROTOCOL_VERSION, AcknowledgeAction, EventPayloadDict, NuropbMessageType, NuropbCallAgain, NuropbSuccess,
 )
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
+verbose = False
 
 
 def create_transport_responses_from_exceptions(
@@ -76,38 +76,41 @@ def create_transport_responses_from_exceptions(
     elif isinstance(exception, NuropbSuccess):
         """ this is only applicable to requests as they have a response, for commands and events
         the acknowledgement will be "ack" and no TransportRespondPayload will be sent
+        
+        only send responses for requests
         """
         acknowledgement = "ack"
-        response = response_template.copy()
-        response.update({
-            "result": exception.result
-        })
-        transport_responses.append(TransportRespondPayload(
-            nuropb_protocol=NUROPB_PROTOCOL_VERSION,
-            correlation_id=correlation_id,
-            trace_id=trace_id,
-            ttl=None,
-            nuropb_type="response",
-            nuropb_payload=response,
-        ))
-        """ Check the  NuropbSuccess if there are and events to be sent as well
-        """
-        if exception.events:
-            for event in exception.events:
-                event_payload = event_template.copy()
-                event_payload.update({
-                    "topic": event["topic"],
-                    "event": event["payload"],
-                    "target": event["target"],
-                })
-                transport_responses.append(TransportRespondPayload(
-                    nuropb_protocol=NUROPB_PROTOCOL_VERSION,
-                    correlation_id=correlation_id,
-                    trace_id=trace_id,
-                    ttl=None,
-                    nuropb_type="event",
-                    nuropb_payload=event_payload,
-                ))
+        if service_type == "request":
+            response = response_template.copy()
+            response.update({
+                "result": exception.result
+            })
+            transport_responses.append(TransportRespondPayload(
+                nuropb_protocol=NUROPB_PROTOCOL_VERSION,
+                correlation_id=correlation_id,
+                trace_id=trace_id,
+                ttl=None,
+                nuropb_type="response",
+                nuropb_payload=response,
+            ))
+            """ Check the  NuropbSuccess if there are and events to be sent as well
+            """
+            if exception.events:
+                for event in exception.events:
+                    event_payload = event_template.copy()
+                    event_payload.update({
+                        "topic": event["topic"],
+                        "event": event["payload"],
+                        "target": event["target"],
+                    })
+                    transport_responses.append(TransportRespondPayload(
+                        nuropb_protocol=NUROPB_PROTOCOL_VERSION,
+                        correlation_id=correlation_id,
+                        trace_id=trace_id,
+                        ttl=None,
+                        nuropb_type="event",
+                        nuropb_payload=event_payload,
+                    ))
 
     elif isinstance(exception, (Exception, NuropbException)):
         """ Process all other exceptions with a reject acknowledgement and create NuroPb response 
@@ -148,7 +151,7 @@ def handle_execution_result(
     :return:
     """
     error = None
-    acknowledgement = "reject"
+    acknowledgement: AcknowledgeAction = "ack"
     if asyncio.isfuture(result):
         error = result.exception()
         if error is None:
@@ -156,6 +159,7 @@ def handle_execution_result(
             acknowledgement = "ack"
         else:
             result = error
+            acknowledgement = "reject"
 
     responses = []
     if service_message["nuropb_type"] == "event":
@@ -164,14 +168,22 @@ def handle_execution_result(
     else:
         if isinstance(result, (Exception, BaseException)):
             """ Create NuroPb response from an exception, and update acknowledgement response
+            
+                Do not send a response for commands
             """
             acknowledgement, transport_response = create_transport_responses_from_exceptions(
                 service_message=service_message,
                 exception=result
             )
-            responses.extend(transport_response)
-        else:
+            """ Do not send a response for commands
+            """
+            if service_message["nuropb_type"] == "request":
+                responses.extend(transport_response)
+
+        elif service_message["nuropb_type"] == "request":
             """ Create NuroPb response from the service call result
+            
+            Do not send a response for commands
             """
             payload = ResponsePayloadDict(
                 tag="response",
@@ -227,10 +239,12 @@ def execute_request(
         if service_message["nuropb_type"] == "event":
             topic = payload["topic"]
             event = payload["event"]
-            if hasattr(service_instance, "_event_handler"):
-                event_handler = getattr(service_instance, "_event_handler")
+            target = payload["target"]
+            context = payload["context"]
+            if hasattr(service_instance, "_handle_event_"):
+                event_handler = getattr(service_instance, "_handle_event_")
                 if callable(event_handler):
-                    result = event_handler(topic, event)
+                    result = event_handler(topic, event, target, context)
                 else:
                     raise NuropbHandlingError(
                         description=f"error calling instance._event_handler for topic: {topic}",
@@ -263,10 +277,12 @@ def execute_request(
             try:
                 result = getattr(service_instance, method_name)(**params)
             except NuropbException as err:
-                logging.exception(err)
+                if verbose:
+                    logger.exception(err)
                 raise
             except Exception as err:
-                logging.exception(err)
+                if verbose:
+                    logger.exception(err)
                 raise NuropbException(
                     description=f"Runtime exception calling {service_name}.{method_name}:{err}",
                     lifecycle="service-handle",
@@ -280,7 +296,7 @@ def execute_request(
             if is_future(result):
                 raise ValueError("Tornado Future detected, please use asyncio.Future instead")
 
-            def future_done_callback(future):
+            def future_done_callback(future: Awaitable[Any]) -> None:
                 handle_execution_result(service_message, future, message_complete_callback)
 
             task = asyncio.ensure_future(result)
@@ -294,5 +310,6 @@ def execute_request(
             # Synchronous responses
             handle_execution_result(service_message, result, message_complete_callback)
     except Exception as err:
-        logger.exception(err)
+        if verbose:
+            logger.exception(err)
         handle_execution_result(service_message, err, message_complete_callback)

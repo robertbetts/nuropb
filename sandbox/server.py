@@ -6,7 +6,7 @@ from nuropb.rmq_api import RMQAPI
 from nuropb.service_runner import ServiceContainer
 from service_example import ServiceExample
 
-logger = logging.getLogger()
+logger = logging.getLogger("server")
 
 
 async def main():
@@ -51,9 +51,9 @@ async def main():
 
 
 if __name__ == '__main__':
-    log_format = ('%(levelname).1s %(asctime)s %(name) -20s %(funcName) '
+    log_format = ('%(levelname).1s %(asctime)s %(name) -25s %(funcName) '
                   '-35s %(lineno) -5d: %(message)s')
-    logging.basicConfig(level=logging.DEBUG, format=log_format)
+    logging.basicConfig(level=logging.INFO, format=log_format)
     logging.getLogger('pika').setLevel(logging.WARNING)
     logging.getLogger('etcd3').setLevel(logging.WARNING)
     logging.getLogger('urllib3').setLevel(logging.WARNING)

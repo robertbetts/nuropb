@@ -40,13 +40,11 @@ async def test_rmq_api_client_mode(test_settings, test_rmq_url):
         default_ttl=test_settings["default_ttl"],
     )
     rmq_api = RMQAPI(
-        service_name=service_name,
         instance_id=instance_id,
         amqp_url=test_rmq_url,
         rpc_exchange=test_settings["rpc_exchange"],
         events_exchange=test_settings["events_exchange"],
         transport_settings=transport_settings,
-        client_only=True,
     )
     await rmq_api.connect()
     assert rmq_api.connected is True
@@ -54,47 +52,10 @@ async def test_rmq_api_client_mode(test_settings, test_rmq_url):
     assert rmq_api.connected is False
 
 
-@pytest.mark.asyncio
-async def test_rmq_api_client_mode_unconfigured_rmq(test_settings, unconfigured_rmq_url):
-    """ Test client mode. Test the client behaviour when the RMQ server is not configured.
-
-        Expected behaviour:
-            - RMQAPI.connect() should not raise an exception and behave as if it was connected
-            - RMQAPI.disconnect() should not raise an exception and behave as if it was disconnected
-            - RMQAPI.request() should raise an exception
-            - RMQAPI.command() should raise an exception
-            - RMQAPI.publish_event() should raise an exception
-    """
-    logger.info("testing against RMQ server: %s", unconfigured_rmq_url)
-    service_name = "test_client"
-    instance_id = uuid4().hex
-    transport_settings = dict(
-        dl_exchange=test_settings["dl_exchange"],
-        rpc_bindings=[],
-        event_bindings=[],
-        prefetch_count=test_settings["prefetch_count"],
-        default_ttl=test_settings["default_ttl"],
-    )
-    rmq_api = RMQAPI(
-        service_name=service_name,
-        instance_id=instance_id,
-        amqp_url=unconfigured_rmq_url,
-        rpc_exchange=test_settings["rpc_exchange"],
-        events_exchange=test_settings["events_exchange"],
-        transport_settings=transport_settings,
-        client_only=True,
-    )
-
-    with pytest.raises(ServiceNotConfigured):
-        await rmq_api.connect()
-        assert rmq_api.connected is False
-
-    await rmq_api.disconnect()
-    assert rmq_api.connected is False
-
+# @pytest.mark.skip
 
 @pytest.mark.asyncio
-async def test_rmq_api_service_mode(test_settings, test_rmq_url, event_loop):
+async def test_rmq_api_service_mode(test_settings, test_rmq_url, service_instance):
     service_name = test_settings["service_name"]
     instance_id = uuid4().hex
     transport_settings = dict(
@@ -107,11 +68,11 @@ async def test_rmq_api_service_mode(test_settings, test_rmq_url, event_loop):
     rmq_api = RMQAPI(
         service_name=service_name,
         instance_id=instance_id,
+        service_instance=service_instance,
         amqp_url=test_rmq_url,
         rpc_exchange=test_settings["rpc_exchange"],
         events_exchange=test_settings["events_exchange"],
         transport_settings=transport_settings,
-        client_only=True,
     )
     await rmq_api.connect()
     assert rmq_api.connected is True

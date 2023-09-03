@@ -13,7 +13,7 @@ from typing import (
     List,
 )
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 NUROPB_VERSION = "0.1.0"
 NUROPB_PROTOCOL_VERSION = "0.1.0"
@@ -106,7 +106,6 @@ class CommandPayloadDict(TypedDict):
     service: str
     method: str
     params: Dict[str, Any]
-    reply_to: str
 
 
 class EventPayloadDict(TypedDict):
@@ -504,7 +503,8 @@ class NuropbInterface(ABC):
 
     def command(
         self,
-        command: str,
+        service: str,
+        method: str,
         params: Dict[str, Any],
         context: Dict[str, Any],
         wait_for_ack: bool = False,
@@ -514,7 +514,10 @@ class NuropbInterface(ABC):
         """command: sends a command to the target service. It is up to the implementation to manage message
         idempotency and message delivery guarantees.
 
-        :param command: the service name
+        any response from the target service is ignored.
+
+        :param service: the service name
+        :param method: the method name
         :param params: the method arguments, these must be easily serializable to JSON
         :param context: additional information that represent the context in which the request is executed.
                         The must be easily serializable to JSON.

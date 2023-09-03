@@ -87,7 +87,7 @@ def test_rmq_url(test_settings):
         rpc_exchange=transport.rpc_exchange,
         dl_exchange=transport._dl_exchange,
         dl_queue=transport._dl_queue,
-        request_queue=transport._request_queue,
+        service_queue=transport._service_queue,
         rpc_bindings=list(transport._rpc_bindings),
         event_bindings=list(transport._event_bindings)
     )
@@ -142,7 +142,7 @@ def test_rmq_url_static(test_settings):
         rpc_exchange=transport.rpc_exchange,
         dl_exchange=transport._dl_exchange,
         dl_queue=transport._dl_queue,
-        request_queue=transport._request_queue,
+        service_queue=transport._service_queue,
         rpc_bindings=list(transport._rpc_bindings),
         event_bindings=list(transport._event_bindings)
     )

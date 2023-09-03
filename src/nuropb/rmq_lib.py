@@ -11,7 +11,7 @@ from pika.channel import Channel
 
 from nuropb.interface import PayloadDict, NuropbTransportError, NuropbLifecycleState
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 
 def build_amqp_url(
@@ -107,7 +107,7 @@ def configure_nuropb_rmq(
     rpc_exchange: str,
     dl_exchange: str,
     dl_queue: str,
-    request_queue: str,
+    service_queue: str,
     rpc_bindings: List[str],
     event_bindings: List[str],
     **kwargs: Any,
@@ -155,7 +155,7 @@ def configure_nuropb_rmq(
     :param str rpc_exchange: The name of the RPC exchange
     :param str dl_exchange: The name of the dead letter exchange
     :param str dl_queue: The name of the dead letter queue
-    :param str request_queue: The name of the requests queue
+    :param str service_queue: The name of the requests queue
     :param List[str] rpc_bindings: The list of RPC bindings
     :param List[str] event_bindings: The list of events bindings
     :param kwargs: Additional keyword argument overflow from the transport settings.
@@ -200,14 +200,14 @@ def configure_nuropb_rmq(
             durable=True,
         )
         logger.info(
-            f"Declaring the request queue: {request_queue} to the rpc exchange: {rpc_exchange}"
+            f"Declaring the request queue: {service_queue} to the rpc exchange: {rpc_exchange}"
         )
         requests_queue_config = {
             "durable": True,
             "auto_delete": False,
             "arguments": {"x-dead-letter-exchange": dl_exchange},
         }
-        channel.queue_declare(queue=request_queue, **requests_queue_config)
+        channel.queue_declare(queue=service_queue, **requests_queue_config)
 
         """ This NOTE is here for reference only. A response queue is not durable by default
         and is the responsibility of the client/service follower to declare on startup. 
@@ -225,11 +225,11 @@ def configure_nuropb_rmq(
         """
         for routing_key in rpc_bindings:
             logger.info("binding to {}".format(routing_key))
-            channel.queue_bind(request_queue, rpc_exchange, routing_key)
+            channel.queue_bind(service_queue, rpc_exchange, routing_key)
 
         for routing_key in event_bindings:
             logger.info("binding to {}".format(routing_key))
-            channel.queue_bind(request_queue, events_exchange, routing_key)
+            channel.queue_bind(service_queue, events_exchange, routing_key)
 
         rabbitmq_configured = True
 
@@ -305,6 +305,29 @@ def ack_message(
         f"Acking message, delivery_tag: {delivery_tag}, correlation_id: {properties.correlation_id}"
     )
     channel.basic_ack(delivery_tag=delivery_tag)
+
+
+def get_virtual_host_queues(api_url: str, vhost_url: str) -> Any | None:
+    """Creates a virtual host on the RabbitMQ server using the REST API
+    :param api_url: the url to the RabbitMQ API
+    :param vhost_url: the virtual host to create
+
+    :return: None
+    """
+    url_parts = urlparse(vhost_url)
+    vhost = url_parts.path[1:] if url_parts.path.startswith("/") else url_parts.path
+    api_url += f"/queues/{vhost}"
+    headers: Dict[str, Any] = {}
+    response = requests.get(
+        url=api_url,
+        headers=headers,
+        verify=False,
+    )
+    if response.status_code == 404:
+        return None
+    else:
+        response.raise_for_status()
+        return response.json()
 
 
 def get_virtual_hosts(api_url: str, vhost_url: str) -> Any | None:

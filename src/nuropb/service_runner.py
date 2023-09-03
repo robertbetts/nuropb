@@ -29,7 +29,7 @@ from nuropb.rmq_api import RMQAPI
 from nuropb.rmq_lib import configure_nuropb_rmq, create_virtual_host
 from nuropb.rmq_transport import RMQTransport
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 LEADER_KEY = "/leader"  # this key is prefixed with /nuropb/{service-name}
 LEASE_TTL = 15  # seconds
@@ -107,7 +107,7 @@ class ServiceContainer(ServiceRunner):
         self._etcd_prefix = f"/nuropb/{self._service_name}"
         self._etcd_config = etcd_config
 
-        logging.info(
+        logger.info(
             "Starting the service container for {}:{}".format(
                 self._service_name, self._instance_id
             )
@@ -128,7 +128,7 @@ class ServiceContainer(ServiceRunner):
     def running_state(self, value: ContainerRunningState) -> None:
         """running_state: updating the current running state of the service container."""
         if value != self._running_state:
-            logging.info(f"running_state change: {self._running_state} -> {value}")
+            logger.info(f"running_state change: {self._running_state} -> {value}")
             self._running_state = value
 
     async def init_etcd(self, on_startup: bool = True) -> bool:
@@ -291,8 +291,8 @@ class ServiceContainer(ServiceRunner):
             to the leadership state and wait for the next etcd event or reconnection attempt.
             """
             logger.error(f"Error during leader nomination: {e}")
-            logging.exception(e)
-            logging.info("called init_etcd() to re-initiate the etcd connection")
+            logger.exception(e)
+            logger.info("called init_etcd() to re-initiate the etcd connection")
             task = asyncio.create_task(self.init_etcd(on_startup=False))
             task.add_done_callback(lambda _: None)
 
@@ -330,7 +330,7 @@ class ServiceContainer(ServiceRunner):
             rpc_exchange=transport_settings["rpc_exchange"],
             dl_exchange=transport_settings["dl_exchange"],
             dl_queue=transport_settings["dl_queue"],
-            request_queue=transport_settings["request_queue"],
+            service_queue=transport_settings["service_queue"],
             rpc_bindings=transport_settings["rpc_bindings"],
             event_bindings=transport_settings["event_bindings"],
         )
@@ -378,7 +378,7 @@ class ServiceContainer(ServiceRunner):
             if len(response.kvs) >= 1 and response.kvs[0].value:
                 self._rmq_config_ok = response.kvs[0].value.decode() == "True"
             while self._rmq_config_ok is False:
-                logging.debug("Waiting for the RMQ configuration to be OK")
+                logger.debug("Waiting for the RMQ configuration to be OK")
                 await asyncio.sleep(5)  # wait 5 more seconds
 
         await self._instance.connect()
