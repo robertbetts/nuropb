@@ -29,7 +29,7 @@ from nuropb.interface import (
     EventPayloadDict,
     NuropbMessageType,
     NuropbCallAgain,
-    NuropbSuccess, NuropbCallAgainReject,
+    NuropbSuccess,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ verbose = False
 
 
 def error_dict_from_exception(exception: Exception | BaseException) -> dict[str, str]:
-    """ Creates an error dict from an exception
+    """Creates an error dict from an exception
     :param exception:
     :return:
     """
@@ -60,12 +60,11 @@ def error_dict_from_exception(exception: Exception | BaseException) -> dict[str,
 
 
 def create_transport_response_from_rmq_decode_exception(
-        exception: Exception | BaseException,
-        basic_deliver: pika.spec.Basic.Deliver,
-        properties: pika.spec.BasicProperties,
+    exception: Exception | BaseException,
+    basic_deliver: pika.spec.Basic.Deliver,
+    properties: pika.spec.BasicProperties,
 ) -> Tuple[AcknowledgeAction, list[TransportRespondPayload]]:
-    """Creates a NuroPb response from an unsupported message received over RabbitMQ
-    """
+    """Creates a NuroPb response from an unsupported message received over RabbitMQ"""
     _ = basic_deliver
 
     acknowledgement: AcknowledgeAction = "reject"
@@ -97,8 +96,7 @@ def create_transport_response_from_rmq_decode_exception(
 
 
 def create_transport_responses_from_exceptions(
-    service_message: TransportServicePayload,
-    exception: Exception | BaseException
+    service_message: TransportServicePayload, exception: Exception | BaseException
 ) -> Tuple[AcknowledgeAction, list[TransportRespondPayload]]:
     """Creates a NuroPb response from an exceptions and also accommodates special cases like
     NuropbCallAgain and NuropbSuccess
@@ -135,14 +133,14 @@ def create_transport_responses_from_exceptions(
     if isinstance(exception, NuropbCallAgain):
         """Acknowledge with a "nack" to requeue the message and send no TransportRespondPayload
         This case will hold true for requests, commands and events
-        
+
         When a message is nack'd and requeued, there is no current way to track how many
         times this may have occurred for the same message. To ensure stability, behaviour
-        predictability and to limit the abuse of patterns, the use of NuropbCallAgain is 
+        predictability and to limit the abuse of patterns, the use of NuropbCallAgain is
         limited to once and only once. This is enforced at the transport layer. For RabbitMQ
         if the incoming message is a requeued message, the basic_deliver.redelivered is
         True. Call again for all redelivered messages will be rejected.
-        
+
         a nuropb_ca_count header is added
         or incremented to the message. This is used to limit the number of times a message is
         requeued before it is dead-lettered.
@@ -213,9 +211,11 @@ def create_transport_responses_from_exceptions(
         acknowledgement = "reject"
         if service_type == "request":
             response = response_template.copy()
-            response.update({
-                "error": error_dict_from_exception(exception=exception),
-            })
+            response.update(
+                {
+                    "error": error_dict_from_exception(exception=exception),
+                }
+            )
             transport_responses.append(
                 TransportRespondPayload(
                     nuropb_protocol=NUROPB_PROTOCOL_VERSION,

@@ -151,7 +151,7 @@ class RMQAPI(NuropbInterface):
         """
         await self._transport.stop()
 
-    async def keep_loop_active(self) -> None: # pragma: no cover
+    async def keep_loop_active(self) -> None:  # pragma: no cover
         """keep_loop_active: keeps the asyncio loop active while the transport is connected
 
         The factor for introducing this method is that during pytest, the asyncio loop
@@ -212,9 +212,7 @@ class RMQAPI(NuropbInterface):
         """ The logic below is only relevant for incoming service messages
         """
         if self._service_instance is None:
-            error_description = (
-                f"No service instance configured to handle the {service_message['nuropb_type']} instruction"
-            )
+            error_description = f"No service instance configured to handle the {service_message['nuropb_type']} instruction"
             logger.warning(error_description)
             response = NuropbHandlingError(
                 description=error_description,

@@ -11,7 +11,6 @@ logger = logging.getLogger()
 
 @pytest.mark.asyncio
 async def test_request_response_pass(test_settings, test_rmq_url, service_instance):
-
     instance_id = uuid4().hex
     client_transport_settings = dict(
         dl_exchange=test_settings["dl_exchange"],
@@ -47,4 +46,3 @@ async def test_request_response_pass(test_settings, test_rmq_url, service_instan
         )
     await client_api.disconnect()
     assert client_api.connected is False
-

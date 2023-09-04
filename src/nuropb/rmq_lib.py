@@ -337,7 +337,7 @@ def get_virtual_hosts(api_url: str, vhost_url: str) -> Any | None:
 
     :return: None
     """
-    url_parts = urlparse(vhost_url)
+    _ = vhost_url
     api_url += "/vhosts"
     headers: Dict[str, Any] = {}
     response = requests.get(

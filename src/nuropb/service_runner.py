@@ -88,7 +88,12 @@ class ServiceContainer(ServiceRunner):
     _container_running_future: Awaitable[bool] | None
     _container_shutdown_future: Awaitable[bool] | None
 
-    def __init__(self, rmq_api_url: str, instance: RMQAPI, etcd_config: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        rmq_api_url: str,
+        instance: RMQAPI,
+        etcd_config: Optional[Dict[str, Any]] = None,
+    ):
         """__init__: initializes the service container.
         :param instance: the service instance.
         :param etcd_config: the etcd3 configuration.
@@ -118,7 +123,7 @@ class ServiceContainer(ServiceRunner):
             logger.warning("etcd features are disabled")
             self.running_state = "running-standalone"
         else:
-            """ asyncio NOTE: the etcd3 client is initialized as an asyncio task and will run
+            """asyncio NOTE: the etcd3 client is initialized as an asyncio task and will run
             once __init__ has completed and there us a running asyncio event loop.
             """
             task = asyncio.create_task(self.init_etcd(on_startup=True))
@@ -379,8 +384,8 @@ class ServiceContainer(ServiceRunner):
             self.update_etcd_service_property("rmq-config-ok", self._rmq_config_ok)
 
         if self.running_state != "running-standalone":
-            """ For all service instances including the leader, wait for the leader to confirm that the 
-            RMQ configuration to be OK before connecting to RMQ. Although the RMQ configuration queue 
+            """For all service instances including the leader, wait for the leader to confirm that the
+            RMQ configuration to be OK before connecting to RMQ. Although the RMQ configuration queue
             is idempotent, it is better consistency across the service instances to wait.
             """
             if self._instance.client_only is False and self._rmq_config_ok is False:
@@ -390,7 +395,9 @@ class ServiceContainer(ServiceRunner):
                 while self._rmq_config_ok is False:
                     logger.debug("Waiting for the RMQ configuration to be OK")
                     await asyncio.sleep(5)  # wait 5 more seconds
-            self.running_state = "running-leader" if self._is_leader else "running-follower"
+            self.running_state = (
+                "running-leader" if self._is_leader else "running-follower"
+            )
 
         await self._instance.connect()
 

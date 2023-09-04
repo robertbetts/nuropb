@@ -36,6 +36,7 @@ async def test_rmq_api_service_mode(test_settings, test_rmq_url, test_api_url):
     )
     await container.start()
 
+
 @pytest.mark.asyncio
 async def test_rmq_api_service_mode_no_etcd(test_settings, test_rmq_url, test_api_url):
     instance_id = uuid4().hex

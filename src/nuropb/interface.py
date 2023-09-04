@@ -254,6 +254,7 @@ class NuropbException(Exception):
             "description": description,
         }
 
+
 class NuropbTimeoutError(NuropbException):
     """NuropbTimeoutError: represents an error that occurred when a timeout was reached.
 
@@ -359,7 +360,7 @@ class NuropbNotDeliveredError(NuropbException):
 
 
 class NuropbCallAgainReject(NuropbException):
-    """ NuropbCallAgainReject: when this exception is raised, the transport layer will REJECT
+    """NuropbCallAgainReject: when this exception is raised, the transport layer will REJECT
     the message
 
     To prevent accidental use of the redelivered parameter and to ensure system predictability

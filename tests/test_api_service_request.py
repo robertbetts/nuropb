@@ -284,7 +284,7 @@ async def test_request_response_call_again(
 
 @pytest.mark.asyncio
 async def test_request_response_call_again_loop_fail(
-        test_settings, test_rmq_url, service_instance
+    test_settings, test_rmq_url, service_instance
 ):
     service_name = test_settings["service_name"]
     instance_id = uuid4().hex

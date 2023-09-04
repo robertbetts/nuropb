@@ -67,7 +67,8 @@ def test_rmq_url(test_settings):
 
     create_virtual_host(api_url, rmq_url)
 
-    def message_callback(*args, **kwargs): pass
+    def message_callback(*args, **kwargs):
+        pass
 
     transport_settings = dict(
         service_name=test_settings["service_name"],
@@ -121,7 +122,8 @@ def test_rmq_url_static(test_settings):
 
     create_virtual_host(api_url, rmq_url)
 
-    def message_callback(*args, **kwargs): pass
+    def message_callback(*args, **kwargs):
+        pass
 
     transport_settings = dict(
         service_name=test_settings["service_name"],
