@@ -19,13 +19,18 @@ jobs:
 
     services:
       rabbitmq:
-        image: rabbitmq:3.8
+        image: rabbitmq:3.12-management
         env:
           RABBITMQ_DEFAULT_USER: guest
           RABBITMQ_DEFAULT_PASS: guest
         ports:
           - 5672
           - 15672
+      etcd:
+        image: quay.io/coreos/etcd:v3.4.15
+        ports:
+          - 2379
+          - 2380
 
     steps:
       #----------------------------------------------
@@ -36,6 +41,13 @@ jobs:
         id: setup-python
         with:
           python-version: '3.11'
+
+      #----------------------------------------------
+      #       setup rabbitmq
+      #----------------------------------------------
+#      - name: RabbitMQ Action with mng
+#        uses: mer-team/rabbitmq-mng-action@v1.2
+
       #----------------------------------------------
       #  -----  install & configure poetry  -----
       #----------------------------------------------
@@ -68,9 +80,10 @@ jobs:
       #    run test suite and output coverage file
       #----------------------------------------------
       - name: Test with coverage and pytest
-        RMQ_AMQP_PORT: ${{ job.services.rabbitmq.ports['5672'] }}
-        RMQ_API_PORT: ${{ job.services.rabbitmq.ports['15672'] }}
         run: poetry run coverage run -m pytest && poetry run coverage xml
+        env:
+          RMQ_AMQP_PORT: ${{ job.services.rabbitmq.ports['5672'] }}
+          RMQ_API_PORT: ${{ job.services.rabbitmq.ports['15672'] }}
         #----------------------------------------------
         #    Upload coverage file to codeconv.io
         #----------------------------------------------

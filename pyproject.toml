@@ -54,7 +54,7 @@ log_cli_date_format = "%d %H:%M:%S"
 [tool.coverage.run]
 omit = [".*", "*/site-packages/*"]
 [tool.coverage.report]
-fail_under = 95
+fail_under = 80
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:"

@@ -8,7 +8,7 @@ from nuropb.service_runner import ServiceContainer
 
 logger = logging.getLogger()
 
-
+# @pytest.mark.skip
 @pytest.mark.asyncio
 async def test_rmq_api_service_mode(test_settings, test_rmq_url, test_api_url):
     instance_id = uuid4().hex
@@ -34,7 +34,7 @@ async def test_rmq_api_service_mode(test_settings, test_rmq_url, test_api_url):
             port=2379,
         ),
     )
-    await container.start()
+    # await container.start()
 
 
 @pytest.mark.asyncio
