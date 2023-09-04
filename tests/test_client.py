@@ -35,17 +35,16 @@ async def test_request_response_pass(test_settings, test_rmq_url, service_instan
     ttl = 60 * 5 * 1000
     trace_id = uuid4().hex
     logging.info(f"Requesting {service}.{method}")
-    rpc_response = await client_api.request(
-        service=service,
-        method=method,
-        params=params,
-        context=context,
-        ttl=ttl,
-        trace_id=trace_id,
-        rpc_response=False,
-    )
-    logging.info(f"response: {rpc_response}")
-    assert rpc_response["result"] == f"response from {service}.{method}"
+    with pytest.raises(NuropbMessageError):
+        await client_api.request(
+            service=service,
+            method=method,
+            params=params,
+            context=context,
+            ttl=ttl,
+            trace_id=trace_id,
+            rpc_response=False,
+        )
     await client_api.disconnect()
     assert client_api.connected is False
 

@@ -67,8 +67,7 @@ def test_rmq_url(test_settings):
 
     create_virtual_host(api_url, rmq_url)
 
-    def message_callback(*args, **kwargs):
-        logging.info(f"message_callback: {args} {kwargs}")
+    def message_callback(*args, **kwargs): pass
 
     transport_settings = dict(
         service_name=test_settings["service_name"],
@@ -122,8 +121,7 @@ def test_rmq_url_static(test_settings):
 
     create_virtual_host(api_url, rmq_url)
 
-    def message_callback(*args, **kwargs):
-        logging.info(f"message_callback: {args} {kwargs}")
+    def message_callback(*args, **kwargs): pass
 
     transport_settings = dict(
         service_name=test_settings["service_name"],
@@ -166,18 +164,6 @@ def test_api_url(test_settings):
         password=test_settings["password"],
     )
     return rmq_url
-
-
-@pytest.fixture(scope="function")
-def unconfigured_rmq_url(test_settings, test_rmq_url, test_api_url):
-    """Create a new vhost with not exchange, queues or bindings
-    and destroy it after the test
-    """
-    test_id = secrets.token_hex(8)
-    tmp_url = f"{test_rmq_url}-{test_id}"
-    create_virtual_host(test_api_url, tmp_url)
-    yield tmp_url
-    delete_virtual_host(test_api_url, tmp_url)
 
 
 @pytest.fixture(scope="session")

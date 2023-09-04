@@ -35,10 +35,10 @@ async def main():
     container = ServiceContainer(
         rmq_api_url=api_url,
         instance=api,
-        etcd_config=dict(
-            host="localhost",
-            port=2379,
-        ),
+        # etcd_config=dict(
+        #     host="localhost",
+        #     port=2379,
+        # ),
     )
     await container.start()
 

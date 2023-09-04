@@ -23,6 +23,25 @@ def test_rmq_preparation(test_settings, test_rmq_url, test_api_url):
 
 
 @pytest.mark.asyncio
+async def test_instantiate_api(test_settings, test_rmq_url):
+    """Test that the RMQAPI instance can be instantiated"""
+    with pytest.raises(ValueError):
+        test_url = "/".join(test_rmq_url.split("/")[:-1])
+        rmq_api = RMQAPI(
+            amqp_url=test_url,
+        )
+
+    rmq_api = RMQAPI(
+        amqp_url=test_rmq_url,
+    )
+    await rmq_api.connect()
+    await rmq_api.connect()
+    await rmq_api.disconnect()
+
+    assert rmq_api.is_leader is True
+
+
+@pytest.mark.asyncio
 async def test_rmq_api_client_mode(test_settings, test_rmq_url):
     """Test client mode. this is a client only instance of RMQAPI and only established a connection
     to the RMQ server. It registers a response queue that is automatically associated with the default

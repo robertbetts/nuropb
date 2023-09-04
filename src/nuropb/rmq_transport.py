@@ -791,9 +791,8 @@ Check that the following exchanges, queues and bindings exist:
         if self._channel:
             self._channel.close()
 
-    @classmethod
     def on_message_returned(
-        cls,
+        self,
         channel: pika.channel.Channel,  # noqa
         method: pika.spec.Basic.Return,
         properties: pika.spec.BasicProperties,
@@ -812,12 +811,57 @@ Check that the following exchanges, queues and bindings exist:
         correlation_id = properties.correlation_id
         trace_id = properties.headers.get("trace_id", "unknown")
         nuropb_type = properties.headers.get("nuropb_type", "unknown")
+        nuropb_version = properties.headers.get("nuropb_version", "unknown")
         logger.warning(
-            f"Could not route {nuropb_type} message with "
+            f"Could not route {nuropb_type} message ro service {method.routing_key} "
             f"correlation_id: {correlation_id} "
             f"trace_id: {trace_id} "
             f": {method.reply_code}, {method.reply_text}"
         )
+        """ End the awaiting request future with a NuropbNotDeliveredError
+        """
+        if nuropb_type == "request":
+            nuropb_payload = decode_payload(body, "json")
+            request_method = nuropb_payload["method"]
+            nuropb_payload["tag"] = nuropb_type
+            nuropb_payload["error"] = {
+                "error": "NuropbNotDeliveredError",
+                "description": f"Service {method.routing_key} not available. unable to call method {request_method}",
+            }
+            nuropb_payload["result"] = None
+            nuropb_payload.pop("service", None)
+            nuropb_payload.pop("method", None)
+            nuropb_payload.pop("params", None)
+            nuropb_payload.pop("reply_to", None)
+            message = TransportRespondPayload(
+                nuropb_protocol=NUROPB_PROTOCOL_VERSION,
+                correlation_id=correlation_id,
+                trace_id=trace_id,
+                ttl=None,
+                nuropb_type="response",
+                nuropb_payload=nuropb_payload,
+            )
+            metadata = {
+                "start_time": time.time(),
+                "service_name": self._service_name,
+                "instance_id": self._instance_id,
+                "is_leader": self._is_leader,
+                "client_only": self._client_only,
+                "nuropb_type": nuropb_type,
+                "nuropb_version": nuropb_version,
+                "correlation_id": properties.correlation_id,
+                "trace_id": properties.headers.get("trace_id", "unknown"),
+            }
+
+            message_complete_callback = functools.partial(
+                self.on_service_message_complete,
+                channel,
+                "",
+                "",
+                metadata,
+            )
+            self._message_callback(message, message_complete_callback, metadata)
+
         if verbose:
             raise NuropbNotDeliveredError(
                 (

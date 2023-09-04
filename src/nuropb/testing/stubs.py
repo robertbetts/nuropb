@@ -52,33 +52,3 @@ class ServiceExample:
         self._method_call_count += 1
         logger.debug(f"test_call_again_error very time: {kwargs}")
         raise NuropbCallAgain("Test Call Again")
-
-
-    def test_varied_exception(self, **kwargs: Any) -> str:
-        self._method_call_count += 1
-
-        success_result = f"response from {self._service_name}.test_method"
-        if self._method_call_count % 3 == 0:
-            raise NuropbSuccess(
-                result=success_result,
-            )
-
-        if self._method_call_count % 4 == 0:
-            events: List[EventType] = [
-                {
-                    "topic": "test-event",
-                    "payload": {
-                        "event_key": "event_value",
-                    },
-                    "target": [],
-                }
-            ]
-            raise NuropbSuccess(
-                result=success_result,
-                events=events,
-            )
-
-        if self._method_call_count % 2 == 0:
-            raise NuropbCallAgain("Test Call Again")
-
-        return success_result

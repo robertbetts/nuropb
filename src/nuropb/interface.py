@@ -447,27 +447,27 @@ class NuropbInterface(ABC):
         to be established
         :return: None
         """
-        raise NotImplementedError()
+        raise NotImplementedError()  # pragma: no cover
 
     async def disconnect(self) -> None:
         """disconnect: disconnects from the underlying transport
         :return: None
         """
-        raise NotImplementedError()
+        raise NotImplementedError()  # pragma: no cover
 
     @property
     def connected(self) -> bool:
         """connected: returns the connection status of the underlying transport
         :return: bool
         """
-        raise NotImplementedError()
+        raise NotImplementedError()  # pragma: no cover
 
     @property
     def is_leader(self) -> bool:
         """is_leader: returns the leader status of the service instance
         :return: bool
         """
-        raise NotImplementedError()
+        raise NotImplementedError()  # pragma: no cover
 
     def receive_transport_message(
         self,
@@ -497,7 +497,7 @@ class NuropbInterface(ABC):
         :param metadata: Dict[str, Any] - metric gathering information
         :return: None
         """
-        raise NotImplementedError()
+        raise NotImplementedError()  # pragma: no cover
 
     async def request(
         self,
@@ -527,7 +527,7 @@ class NuropbInterface(ABC):
 
         :return: ResponsePayloadDict
         """
-        raise NotImplementedError()
+        raise NotImplementedError()  # pragma: no cover
 
     def command(
         self,
@@ -560,7 +560,7 @@ class NuropbInterface(ABC):
 
         :return: None
         """
-        raise NotImplementedError()
+        raise NotImplementedError()  # pragma: no cover
 
     def publish_event(
         self,
@@ -580,4 +580,4 @@ class NuropbInterface(ABC):
         :param trace_id: an identifier to trace the request over the network (e.g. uuid4 hex string)
         :return: None
         """
-        raise NotImplementedError()
+        raise NotImplementedError()  # pragma: no cover

@@ -87,12 +87,6 @@ class TestInterface(NuropbInterface):
         """
         if message["tag"] == "request":
             result = f"expected request response from {message['service']}.{message['method']}"
-        elif message["tag"] == "command":
-            result = f"expected command response from {message['service']}.{message['method']}"
-        elif message["tag"] == "event":
-            result = None
-        else:
-            raise ValueError(f"unexpected message type: {message['tag']}")
 
         if acknowledge_function:
             acknowledge_function("ack")

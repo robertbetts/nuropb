@@ -18,7 +18,7 @@ connecting and starting to consume messages from the RMQ Queues.
 import asyncio
 import logging
 from asyncio import AbstractEventLoop
-from typing import Dict, Any, Awaitable, Literal
+from typing import Dict, Any, Awaitable, Literal, Optional
 
 from etcd3 import Client as EtcdClient
 from etcd3.stateful.lease import Lease
@@ -62,6 +62,7 @@ ContainerRunningState = Literal[
     "taking-leadership",
     "running-leader",
     "running-follower",
+    "running-standalone",
     "stopping",
     "shutdown",
 ]
@@ -87,7 +88,7 @@ class ServiceContainer(ServiceRunner):
     _container_running_future: Awaitable[bool] | None
     _container_shutdown_future: Awaitable[bool] | None
 
-    def __init__(self, rmq_api_url: str, instance: RMQAPI, etcd_config: Dict[str, Any]):
+    def __init__(self, rmq_api_url: str, instance: RMQAPI, etcd_config: Optional[Dict[str, Any]] = None):
         """__init__: initializes the service container.
         :param instance: the service instance.
         :param etcd_config: the etcd3 configuration.
@@ -105,7 +106,7 @@ class ServiceContainer(ServiceRunner):
         self._is_leader = False
         self._leader_reference = ""
         self._etcd_prefix = f"/nuropb/{self._service_name}"
-        self._etcd_config = etcd_config
+        self._etcd_config = etcd_config if etcd_config is not None else {}
 
         logger.info(
             "Starting the service container for {}:{}".format(
@@ -113,11 +114,15 @@ class ServiceContainer(ServiceRunner):
             )
         )
 
-        """ asyncio NOTE: the etcd3 client is initialized as an asyncio task and will run
-        once __init__ has completed and there us a running asyncio event loop.
-        """
-        task = asyncio.create_task(self.init_etcd(on_startup=True))
-        task.add_done_callback(lambda _: None)
+        if not self._etcd_config:
+            logger.warning("etcd features are disabled")
+            self.running_state = "running-standalone"
+        else:
+            """ asyncio NOTE: the etcd3 client is initialized as an asyncio task and will run
+            once __init__ has completed and there us a running asyncio event loop.
+            """
+            task = asyncio.create_task(self.init_etcd(on_startup=True))
+            task.add_done_callback(lambda _: None)
 
     @property
     def running_state(self) -> ContainerRunningState:
@@ -360,29 +365,34 @@ class ServiceContainer(ServiceRunner):
         :return: None
         """
         while True:
-            if self.running_state == "startup-leader-decided":
+            if self.running_state in ("startup-leader-decided", "running-standalone"):
                 break
             else:
                 await asyncio.sleep(1)
 
-        if self._is_leader:
+        if self.running_state == "running-standalone":
+            self.check_and_configure_rmq()
+            self._rmq_config_ok = True
+
+        elif self._is_leader:
             self.check_and_configure_rmq()
             self.update_etcd_service_property("rmq-config-ok", self._rmq_config_ok)
 
-        """ For all service instances including the leader, wait for the leader to confirm that the 
-        RMQ configuration to be OK before connecting to RMQ. Although the RMQ configuration queue 
-        is idempotent, it is better consistency across the service instances to wait.
-        """
-        if self._instance.client_only is False and self._rmq_config_ok is False:
-            response = self._etcd_client.range(f"{self._etcd_prefix}/rmq-config-ok")
-            if len(response.kvs) >= 1 and response.kvs[0].value:
-                self._rmq_config_ok = response.kvs[0].value.decode() == "True"
-            while self._rmq_config_ok is False:
-                logger.debug("Waiting for the RMQ configuration to be OK")
-                await asyncio.sleep(5)  # wait 5 more seconds
+        if self.running_state != "running-standalone":
+            """ For all service instances including the leader, wait for the leader to confirm that the 
+            RMQ configuration to be OK before connecting to RMQ. Although the RMQ configuration queue 
+            is idempotent, it is better consistency across the service instances to wait.
+            """
+            if self._instance.client_only is False and self._rmq_config_ok is False:
+                response = self._etcd_client.range(f"{self._etcd_prefix}/rmq-config-ok")
+                if len(response.kvs) >= 1 and response.kvs[0].value:
+                    self._rmq_config_ok = response.kvs[0].value.decode() == "True"
+                while self._rmq_config_ok is False:
+                    logger.debug("Waiting for the RMQ configuration to be OK")
+                    await asyncio.sleep(5)  # wait 5 more seconds
+            self.running_state = "running-leader" if self._is_leader else "running-follower"
 
         await self._instance.connect()
-        self.running_state = "running-leader" if self._is_leader else "running-follower"
 
     async def start(self) -> None:
         """start: starts the container service instance.

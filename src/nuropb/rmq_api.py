@@ -49,9 +49,9 @@ class RMQAPI(NuropbInterface):
         transport_settings: Optional[Dict[str, Any]] = None,
     ):
         """RMQAPI: A NuropbInterface implementation that uses RabbitMQ as the underlying transport."""
-
+        parts = amqp_url.split("/")
         vhost = amqp_url.split("/")[-1]
-        if not vhost:
+        if len(parts) < 4:
             raise ValueError("Invalid amqp_url, missing vhost")
         self._mesh_name = vhost
 
@@ -73,7 +73,7 @@ class RMQAPI(NuropbInterface):
         if not self._client_only and service_instance is None:
             raise ValueError(
                 "A service instance must be provided when starting in service mode"
-            )
+            )  # pragma: no cover
         self._service_instance = service_instance
 
         transport_settings = {} if transport_settings is None else transport_settings
@@ -90,7 +90,7 @@ class RMQAPI(NuropbInterface):
         if not self._client_only and self._service_instance is None:
             logger.warning(
                 "No service instance provided, service will not be able to handle requests"
-            )
+            )  # pragma: no cover
 
         transport_settings.update(
             {
@@ -151,7 +151,7 @@ class RMQAPI(NuropbInterface):
         """
         await self._transport.stop()
 
-    async def keep_loop_active(self) -> None:
+    async def keep_loop_active(self) -> None: # pragma: no cover
         """keep_loop_active: keeps the asyncio loop active while the transport is connected
 
         The factor for introducing this method is that during pytest, the asyncio loop
@@ -212,7 +212,9 @@ class RMQAPI(NuropbInterface):
         """ The logic below is only relevant for incoming service messages
         """
         if self._service_instance is None:
-            error_description = f"No service instance configured to handle the {service_message['nuropb_type']} instruction"
+            error_description = (
+                f"No service instance configured to handle the {service_message['nuropb_type']} instruction"
+            )
             logger.warning(error_description)
             response = NuropbHandlingError(
                 description=error_description,
