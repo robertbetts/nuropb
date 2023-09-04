@@ -2,6 +2,7 @@ import logging
 import datetime
 import secrets
 from uuid import uuid4
+import os
 
 import pytest
 
@@ -21,10 +22,18 @@ logging.getLogger("pika").setLevel(logging.WARNING)
 @pytest.fixture(scope="session")
 def test_settings():
     start_time = datetime.datetime.utcnow()
+
+    """
+            RMQ_AMQP_PORT: ${{ job.services.rabbitmq.ports['5672'] }}
+        RMQ_API_PORT: ${{ job.services.rabbitmq.ports['15672'] }}
+    """
+    api_port = os.environ.get("RMQ_API_PORT", 15672)
+    amqp_port = os.environ.get("RMQ_AMQP_PORT", 5672)
+
     yield {
         "api_scheme": "http",
-        "api_port": 15672,
-        "port": 5672,
+        "api_port": api_port,
+        "port": amqp_port,
         "host": "127.0.0.1",
         "username": "guest",
         "password": "guest",
