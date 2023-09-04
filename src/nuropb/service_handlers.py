@@ -15,6 +15,7 @@ import logging
 from typing import Any, Tuple, List, Awaitable
 
 from tornado.concurrent import is_future
+import pika.spec
 
 from nuropb.interface import (
     ResponsePayloadDict,
@@ -28,18 +29,79 @@ from nuropb.interface import (
     EventPayloadDict,
     NuropbMessageType,
     NuropbCallAgain,
-    NuropbSuccess,
+    NuropbSuccess, NuropbCallAgainReject,
 )
 
 logger = logging.getLogger(__name__)
 verbose = False
 
 
-def create_transport_responses_from_exceptions(
-    service_message: TransportServicePayload, exception: Exception | BaseException
+def error_dict_from_exception(exception: Exception | BaseException) -> dict[str, str]:
+    """ Creates an error dict from an exception
+    :param exception:
+    :return:
+    """
+    if hasattr(exception, "to_dict"):
+        return exception.to_dict()
+
+    if hasattr(exception, "description"):
+        description = (
+            exception.description
+            if isinstance(exception, NuropbException)
+            else str(exception)
+        )
+        description = description if description else str(exception)
+    else:
+        description = str(exception)
+    return {
+        "error": type(exception).__name__,
+        "description": description,
+    }
+
+
+def create_transport_response_from_rmq_decode_exception(
+        exception: Exception | BaseException,
+        basic_deliver: pika.spec.Basic.Deliver,
+        properties: pika.spec.BasicProperties,
 ) -> Tuple[AcknowledgeAction, list[TransportRespondPayload]]:
-    """Create NuroPb response from an exception handling special cases like NuropbCallAgain
-    and NuropbSuccess
+    """Creates a NuroPb response from an unsupported message received over RabbitMQ
+    """
+    _ = basic_deliver
+
+    acknowledgement: AcknowledgeAction = "reject"
+    transport_responses: List[TransportRespondPayload] = []
+    context = {}
+    correlation_id = properties.correlation_id
+    trace_id = properties.headers.get("trace_id", "unknown")
+
+    response = ResponsePayloadDict(
+        tag="response",
+        correlation_id=correlation_id,
+        context=context,
+        trace_id=trace_id,
+        result=None,
+        error=error_dict_from_exception(exception=exception),
+        warning=None,
+    )
+    transport_responses.append(
+        TransportRespondPayload(
+            nuropb_protocol=NUROPB_PROTOCOL_VERSION,
+            correlation_id=correlation_id,
+            trace_id=trace_id,
+            ttl=None,
+            nuropb_type="response",
+            nuropb_payload=response,
+        )
+    )
+    return acknowledgement, transport_responses
+
+
+def create_transport_responses_from_exceptions(
+    service_message: TransportServicePayload,
+    exception: Exception | BaseException
+) -> Tuple[AcknowledgeAction, list[TransportRespondPayload]]:
+    """Creates a NuroPb response from an exceptions and also accommodates special cases like
+    NuropbCallAgain and NuropbSuccess
 
     :param service_message:
     :param exception:
@@ -71,10 +133,35 @@ def create_transport_responses_from_exceptions(
         target=None,
     )
     if isinstance(exception, NuropbCallAgain):
-        """Acknowledge with a "nack" to requeue then message and send no TransportRespondPayload
+        """Acknowledge with a "nack" to requeue the message and send no TransportRespondPayload
         This case will hold true for requests, commands and events
+        
+        When a message is nack'd and requeued, there is no current way to track how many
+        times this may have occurred for the same message. To ensure stability, behaviour
+        predictability and to limit the abuse of patterns, the use of NuropbCallAgain is 
+        limited to once and only once. This is enforced at the transport layer. For RabbitMQ
+        if the incoming message is a requeued message, the basic_deliver.redelivered is
+        True. Call again for all redelivered messages will be rejected.
+        
+        a nuropb_ca_count header is added
+        or incremented to the message. This is used to limit the number of times a message is
+        requeued before it is dead-lettered.
         """
         acknowledgement = "nack"
+        if service_type == "request":
+            response = response_template.copy()
+            response["result"] = None
+            response["error"] = error_dict_from_exception(exception=exception)
+            transport_responses.append(
+                TransportRespondPayload(
+                    nuropb_protocol=NUROPB_PROTOCOL_VERSION,
+                    correlation_id=correlation_id,
+                    trace_id=trace_id,
+                    ttl=None,
+                    nuropb_type="response",
+                    nuropb_payload=response,
+                )
+            )
 
     elif isinstance(exception, NuropbSuccess):
         """this is only applicable to requests as they have a response, for commands and events
@@ -126,19 +213,9 @@ def create_transport_responses_from_exceptions(
         acknowledgement = "reject"
         if service_type == "request":
             response = response_template.copy()
-            error_description = (
-                exception.description
-                if isinstance(exception, NuropbException)
-                else str(exception)
-            )
-            response.update(
-                {
-                    "error": {
-                        "error": type(exception).__name__,
-                        "description": error_description,
-                    }
-                }
-            )
+            response.update({
+                "error": error_dict_from_exception(exception=exception),
+            })
             transport_responses.append(
                 TransportRespondPayload(
                     nuropb_protocol=NUROPB_PROTOCOL_VERSION,
@@ -159,6 +236,10 @@ def handle_execution_result(
     message_complete_callback: MessageCompleteFunction,
 ) -> None:
     """This function is called from the execute_request() to handle both synchronous and asynchronous results
+
+    With standard implementation message_complete_callback is defined in the transport layer.
+    * For service messages transport.on_service_message_complete() is used
+    * For response messages transport.on_response_message_complete() is used.
 
     :param service_message:
     :param result:

@@ -25,13 +25,15 @@ from nuropb.interface import (
     AcknowledgeAction,
     NUROPB_PROTOCOL_VERSION,
     NUROPB_VERSION,
-    NuropbNotDeliveredError,
+    NuropbNotDeliveredError, NuropbCallAgainReject, ResponsePayloadDict,
 )
 from nuropb.rmq_lib import (
     rmq_api_url_from_amqp_url,
     create_virtual_host,
     configure_nuropb_rmq,
 )
+from nuropb.service_handlers import create_transport_response_from_rmq_decode_exception, \
+    create_transport_responses_from_exceptions, error_dict_from_exception
 from nuropb.utils import obfuscate_credentials
 
 
@@ -789,8 +791,9 @@ Check that the following exchanges, queues and bindings exist:
         if self._channel:
             self._channel.close()
 
+    @classmethod
     def on_message_returned(
-        self,
+        cls,
         channel: pika.channel.Channel,  # noqa
         method: pika.spec.Basic.Return,
         properties: pika.spec.BasicProperties,
@@ -886,6 +889,7 @@ Check that the following exchanges, queues and bindings exist:
         channel: Channel,
         delivery_tag: int,
         action: Literal["ack", "nack", "reject"],
+        redelivered: bool,
     ) -> None:
         """Acknowledgement of a service message
 
@@ -894,14 +898,28 @@ Check that the following exchanges, queues and bindings exist:
         - nack: A recoverable error occurs, the message is not acknowledged and requeued
         - reject: An unrecoverable error occurs, the message is not acknowledged and dropped
 
+        To prevent accidental use of the redelivered parameter and to ensure system
+        predictability on the Call Again feature, messages are only allowed to be redelivered
+        once and only once. To this end all messages that have redelivered == True will be
+        rejected. if redelivered if overridden with None, it is assumed True.
+
         :param pika.channel.Channel channel: The channel object
         :param int delivery_tag: The delivery tag
         :param str action: The action to take, one of ack, nack or reject
+        :param bool redelivered: True if the message is being requeued / replayed.
         """
+        redelivered = True if redelivered is None else redelivered
         if action == "ack":
             channel.basic_ack(delivery_tag=delivery_tag)
         elif action == "nack":
-            channel.basic_nack(delivery_tag=delivery_tag, requeue=True)
+            if redelivered:
+                logger.debug("Redelivered is True, action is overridden from {action} to rejected")
+                channel.basic_reject(delivery_tag=delivery_tag, requeue=False)
+                raise NuropbCallAgainReject("Redelivered message is rejecting")
+            else:
+                if verbose:
+                    logger.debug("Redelivered is False, first time nack and requeue is allowed")
+                channel.basic_nack(delivery_tag=delivery_tag, requeue=True)
         elif action == "reject":
             channel.basic_reject(delivery_tag=delivery_tag, requeue=False)
         else:
@@ -954,6 +972,12 @@ Check that the following exchanges, queues and bindings exist:
     @classmethod
     def metadata_metrics(cls, metadata: Dict[str, Any]) -> None:
         """Invoked by the transport after a service message has been processed.
+
+        NOTE - METADATA: keep this metadata in sync with across all these methods:
+            - on_service_message, on_service_message_complete
+            - on_response_message, on_response_message_complete
+            - metadata_metrics
+
         :param metadata: information to drive message processing metrics
         :return: None
         """
@@ -962,8 +986,8 @@ Check that the following exchanges, queues and bindings exist:
     def on_service_message_complete(
         self,
         channel: Channel,
-        delivery_tag: int,
-        reply_to: str | None,
+        basic_deliver: pika.spec.Basic.Deliver,
+        properties: pika.spec.BasicProperties,
         private_metadata: Dict[str, Any],
         response_messages: List[TransportRespondPayload],
         acknowledgement: AcknowledgeAction,
@@ -981,24 +1005,54 @@ Check that the following exchanges, queues and bindings exist:
               these responses
 
         :param channel:
-        :param delivery_tag:
-        :param reply_to:
+        :param pika.spec.Basic.Deliver basic_deliver: basic_deliver method
+        :param pika.spec.BasicProperties properties: properties
         :param private_metadata: information to drive message processing metrics
         :param response_messages: List[TransportRespondPayload]
         :param acknowledgement:
         :return:
         """
-        self.acknowledge_service_message(channel, delivery_tag, acknowledgement)
+        delivery_tag = basic_deliver.delivery_tag
+        redelivered = basic_deliver.redelivered
+        reply_to = properties.reply_to
+
+        if redelivered is True and acknowledgement == "nack":
+            if verbose:
+                logger.debug("Redelivered is True, action is overridden from nack to rejected")
+            acknowledgement = "reject"
+            if properties.headers.get("nuropb_type", "") == "request":
+                trace_id = properties.headers.get("trace_id", "unknown")
+                correlation_id = properties.correlation_id
+                exception = NuropbCallAgainReject(
+                    description=(
+                        f"Rejecting second call again request for trace_id: {trace_id}"
+                        f", correlation_id: {correlation_id}"
+                    )
+                )
+                response_messages[0]["nuropb_payload"]["error"] = error_dict_from_exception(exception=exception)
+            else:
+                response_messages = []
+        elif acknowledgement == "nack":
+            response_messages = []
+
+        self.acknowledge_service_message(channel, delivery_tag, acknowledgement, redelivered)
+
         for respond_message in response_messages:
             reply_to = reply_to or ""
             self.send_response_messages(reply_to, respond_message)
 
+        """ NOTE - METADATA: keep this dictionary in sync with across all these methods:
+            - on_service_message, on_service_message_complete
+            - on_response_message, on_response_message_complete
+            - metadata_metrics
+        """
         private_metadata["end_time"] = time.time()
         private_metadata["duration"] = (
             private_metadata["end_time"] - private_metadata["start_time"]
         )
         private_metadata["acknowledgement"] = acknowledgement
         private_metadata["message_count"] = len(response_messages)
+        private_metadata["flow_complete"] = True
         self.metadata_metrics(metadata=private_metadata)
 
     def on_service_message(
@@ -1056,6 +1110,15 @@ Check that the following exchanges, queues and bindings exist:
         # - what happens if the request is resent to another service worker?
         # - what happens to the request sender waiting for a response?
 
+        NOTES:
+        * Call Again:
+        When a message is nack'd and requeued, there is no current way to track how many
+        times this may have occurred for the same message. To ensure stability, behaviour
+        predictability and to limit the abuse of patterns, the use of NuropbCallAgain is
+        limited to once and only once. This is enforced at the transport layer. For RabbitMQ
+        if the incoming message is a requeued message, the basic_deliver.redelivered is
+        True. Call again for all redelivered messages will be rejected.
+
         :param str queue_name: The name of the queue that the message was received on
         :param pika.channel.Channel channel: The channel object
         :param pika.spec.Basic.Deliver basic_deliver: basic_deliver method
@@ -1063,6 +1126,7 @@ Check that the following exchanges, queues and bindings exist:
         :param bytes body: The message body
         """
         nuropb_type = properties.headers.get("nuropb_type", "")
+        nuropb_version = properties.headers.get("nuropb_version", "")
         if not verbose:
             logger.debug(f"service message received: '{nuropb_type}'")
         else:
@@ -1075,39 +1139,64 @@ routing_key: {basic_deliver.routing_key}
 correlation_id: {properties.correlation_id}
 trace_id: {properties.headers.get('trace_id', '')}
 content_type: {properties.content_type}
-nuropb_type: {properties.headers.get('nuropb_type', '')}"""
-            )
+nuropb_type: {nuropb_type}
+nuropb_version: {nuropb_version}
+""")
         """ Handle for the unknown message type and reply to the originator if possible
         """
         nuropb_version = properties.headers.get("nuropb_version", "")
+
+        """ NOTE - METADATA: keep this dictionary in sync with across all these methods:
+            - on_service_message, on_service_message_complete
+            - on_response_message, on_response_message_complete
+            - metadata_metrics
+        """
         metadata = {
             "start_time": time.time(),
+            "service_name": self._service_name,
             "instance_id": self._instance_id,
+            "is_leader": self._is_leader,
+            "client_only": self._client_only,
             "nuropb_type": nuropb_type,
             "nuropb_version": nuropb_version,
+            "correlation_id": properties.correlation_id,
+            "trace_id": properties.headers.get("trace_id", "unknown"),
         }
+
+        message_complete_callback = functools.partial(
+            self.on_service_message_complete,
+            channel,
+            basic_deliver,
+            properties,
+            metadata,
+        )
+
+        """ Decode service message
+        """
         try:
             service_message = decode_rmq_body(basic_deliver, properties, body)
         except Exception as error:
             """Exceptions caught here are treated as permanent failures, ack the message and send
             error response is possible
             """
-            logger.exception(f"service message decode error: {error}")
+            logger.exception(f"Service message decode error: {error}")
             self.acknowledge_service_message(
-                channel, basic_deliver.delivery_tag, "reject"
+                channel, basic_deliver.delivery_tag, "reject", basic_deliver.redelivered
             )
 
-            # TODO: Send response if message has properties.reply_to and better logging
+            try:
+                acknowledgement, responses = create_transport_response_from_rmq_decode_exception(
+                    exception=error,
+                    basic_deliver=basic_deliver,
+                    properties=properties
+                )
+                message_complete_callback(responses, acknowledgement)
+            except Exception as err:
+                logger.debug(f"Failed to send service message decode error response: {err}")
 
-            metadata["error"] = error
-            metadata["end_time"] = time.time()
-            metadata["duration"] = metadata["end_time"] - metadata["start_time"]
-            metadata["acknowledgement"] = "reject"
-            metadata["message_count"] = 1
-            self.metadata_metrics(metadata=metadata)
             return
 
-        """ Next, handle the service message
+        """ NEXT: handle the service message
         
             Acknowledgement of the message can only take place on this channel and using
             the delivery tag of this message. if the channel is closed before the message is
@@ -1117,13 +1206,6 @@ nuropb_type: {properties.headers.get('nuropb_type', '')}"""
             Any errors caught here are treated as permanent failures, rejected and dropped.        
         """
         try:
-            message_complete_callback = functools.partial(
-                self.on_service_message_complete,
-                channel,
-                basic_deliver.delivery_tag,
-                properties.reply_to,
-                metadata,
-            )
             """ Assume for now that we can't use key word arguments in self.message_callback
             """
             self._message_callback(service_message, message_complete_callback, metadata)
@@ -1131,19 +1213,75 @@ nuropb_type: {properties.headers.get('nuropb_type', '')}"""
         except Exception as error:
             """Exceptions caught here are treated as permanent failures, ack the message and send error response"""
             logger.exception(f"service message handling error: {error}")
-            self.acknowledge_service_message(
-                channel, basic_deliver.delivery_tag, "reject"
-            )
-
-            # TODO: Send response if message has properties.reply_to and better logging
-
-            metadata["error"] = error
-            metadata["end_time"] = time.time()
-            metadata["duration"] = metadata["end_time"] - metadata["start_time"]
-            metadata["acknowledgement"] = "reject"
-            metadata["message_count"] = 1
-            self.metadata_metrics(metadata=metadata)
+            try:
+                acknowledgement, responses = create_transport_response_from_rmq_decode_exception(
+                    exception=error,
+                    basic_deliver=basic_deliver,
+                    properties=properties
+                )
+                message_complete_callback(responses, acknowledgement)
+            except Exception as err:
+                logger.debug(f"Failed to send service handling error response: {err}")
             return
+
+    def on_response_message_complete(
+            self,
+            channel: Channel,
+            basic_deliver: pika.spec.Basic.Deliver,
+            properties: pika.spec.BasicProperties,
+            private_metadata: Dict[str, Any],
+            response_messages: List[TransportRespondPayload],
+            acknowledgement: AcknowledgeAction,
+    ) -> None:
+        """Invoked by the implementation after a service message has been processed.
+
+        This is provided to the implementation as a helper function to complete the message flow.
+        The message flow state parameters: channel, delivery_tag, reply_to and private_metadata
+        are hidden from the implementation through the use of functools.partial. The interface
+        of this function as it appears to the implementation is:
+            response_messages:  List[TransportRespondPayload]
+            acknowledgement: Literal["ack", "nack", "reject"]
+
+        NOTE: The acknowledgement references the incoming service message that resulted in
+              these responses
+
+        :param channel:
+        :param pika.spec.Basic.Deliver basic_deliver: basic_deliver method
+        :param pika.spec.BasicProperties properties: properties
+        :param private_metadata: information to drive message processing metrics
+        :param response_messages: List[TransportRespondPayload]
+        :param acknowledgement:
+        :return:
+        """
+        _ = channel, basic_deliver, properties
+
+        if acknowledgement != "ack":
+            logger.warning(f"Response messages are auto-acknowledged, ignoring {acknowledgement}")
+            acknowledgement = "ack"
+
+        """ Response messages are received from the response queue which is configured for 
+        auto-acknowledgement. Code below is for reference only in the event that auto-acknowledgement 
+        is disabled or a durable queue is used with explicit acknowledgement.
+        
+        self.acknowledge_service_message(channel, delivery_tag, acknowledgement, redelivered)
+        """
+
+        if len(response_messages) > 0:
+            logger.warning(f"Response messages are not themselves allowed to have response replies, ignoring")
+
+        """ NOTE - METADATA: keep this dictionary in sync with across all these methods:
+        - on_service_message, on_service_message_complete
+        - on_response_message, on_response_message_complete
+        - metadata_metrics
+        """
+        private_metadata["end_time"] = time.time()
+        private_metadata["duration"] = (
+                private_metadata["end_time"] - private_metadata["start_time"]
+        )
+        private_metadata["acknowledgement"] = acknowledgement
+        private_metadata["message_count"] = 0
+        private_metadata["flow_complete"] = True
+        self.metadata_metrics(metadata=private_metadata)
 
     def on_response_message(
         self,
@@ -1166,6 +1304,7 @@ nuropb_type: {properties.headers.get('nuropb_type', '')}"""
         :param bytes body: The message body
         """
         nuropb_type = properties.headers.get("nuropb_type", "")
+        nuropb_version = properties.headers.get("nuropb_version", "")
         if not verbose:
             logger.debug(f"response message received: '{nuropb_type}'")
         else:
@@ -1180,13 +1319,26 @@ nuropb_type: {properties.headers.get('nuropb_type', '')}"""
                     f"correlation_id: {properties.correlation_id}\n"
                     f"trace_id: {properties.headers.get('trace_id', '')}\n"
                     f"content_type: {properties.content_type}\n"
+                    f"nuropb_type: {nuropb_type}\n"
+                    f"nuropb_version: {nuropb_version}\n"
                 )
             )
         try:
+            """ NOTE - METADATA: keep this dictionary in sync with across all these methods:
+                - on_service_message, on_service_message_complete
+                - on_response_message, on_response_message_complete
+                - metadata_metrics
+            """
             metadata = {
                 "start_time": time.time(),
+                "service_name": self._service_name,
                 "instance_id": self._instance_id,
+                "is_leader": self._is_leader,
+                "client_only": self._client_only,
                 "nuropb_type": nuropb_type,
+                "nuropb_version": nuropb_version,
+                "correlation_id": properties.correlation_id,
+                "trace_id": properties.headers.get("trace_id", "unknown"),
             }
             message_complete_callback = functools.partial(
                 self.on_service_message_complete,

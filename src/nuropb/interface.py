@@ -246,6 +246,13 @@ class NuropbException(Exception):
         self.payload = payload
         self.exception = exception
 
+    def to_dict(self):
+        underlying_exception = str(self.exception) if self.exception else str(self)
+        description = self.description if self.description else underlying_exception
+        return {
+            "error": self.__class__.__name__,
+            "description": description,
+        }
 
 class NuropbTimeoutError(NuropbException):
     """NuropbTimeoutError: represents an error that occurred when a timeout was reached.
@@ -351,19 +358,31 @@ class NuropbNotDeliveredError(NuropbException):
     """
 
 
+class NuropbCallAgainReject(NuropbException):
+    """ NuropbCallAgainReject: when this exception is raised, the transport layer will REJECT
+    the message
+
+    To prevent accidental use of the redelivered parameter and to ensure system predictability
+    on the Call Again feature, messages are only allowed to be redelivered once and only once.
+    To this end all messages that have redelivered == True will be rejected.
+    """
+
+
 class NuropbCallAgain(NuropbException):
     """NuropbCallAgain: when this exception is raised, the transport layer will NACK the message
-    and schedule it to be redelivered after a delay. The delay is determined by the transport layer.
-    This will result in a forced repeated call of the original service request, with the same
-    correlation_id and trace_id.
+    and schedule it to be redelivered. The delay is determined by the transport layer or message
+    broker. A call again will result in a forced repeated call of the original message, with the
+    same correlation_id and trace_id.
+
+    The call again "feature" is ignored for event service messages and response messages, as
+    these are acked in all cases. The call again feature by implication is only supported for
+    request and command messages.
 
     WARNING: with request messages, if a response has been returned, then this pattern
              SHOULD NOT be used. The requester will receive the same response again, which will be
              ignored as an unpaired response. if the underlying service method has no idempotence
              guarantees, the service could end up in an inconsistent state.
     """
-
-    pass
 
 
 class NuropbSuccess(NuropbException):

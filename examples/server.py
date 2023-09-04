@@ -17,9 +17,7 @@ async def main():
 
     transport_settings = dict(
         rpc_bindings=[service_name],
-        event_bindings=["test-event"],
-        prefetch_count=10,
-        default_ttl=60 * 30 * 1000,  # 30 minutes
+        event_bindings=[],
     )
 
     service_example = ServiceExample(
@@ -30,7 +28,6 @@ async def main():
     api = RMQAPI(
         service_instance=service_example,
         service_name=service_name,
-        instance_id=instance_id,
         amqp_url=amqp_url,
         transport_settings=transport_settings,
     )

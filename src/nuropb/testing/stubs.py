@@ -27,6 +27,7 @@ class ServiceExample:
 
     def test_success_error(self, **kwargs: Any) -> str:
         self._method_call_count += 1
+        logger.debug(f"test_success_error: {kwargs}")
         success_result = f"response from {self._service_name}.test_success_error"
         raise NuropbSuccess(
             result=success_result,
@@ -34,11 +35,24 @@ class ServiceExample:
 
     def test_call_again_error(self, **kwargs: Any) -> str:
         self._method_call_count += 1
+        logger.debug(f"test_call_again_error: {kwargs}")
         success_result = f"response from {self._service_name}.test_call_again_error"
         if self.raise_call_again_error:
             """this is preventing the test from getting into an infinite loop"""
             self.raise_call_again_error = False
             raise NuropbCallAgain("Test Call Again")
+        result = kwargs.copy()
+        result.update({
+            "success": success_result,
+            "count": self._method_call_count,
+        })
+        return result
+
+    def test_call_again_loop(self, **kwargs: Any) -> str:
+        self._method_call_count += 1
+        logger.debug(f"test_call_again_error very time: {kwargs}")
+        raise NuropbCallAgain("Test Call Again")
+
 
     def test_varied_exception(self, **kwargs: Any) -> str:
         self._method_call_count += 1

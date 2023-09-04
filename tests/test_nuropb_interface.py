@@ -79,6 +79,12 @@ class TestInterface(NuropbInterface):
         message: PayloadDict,
         acknowledge_function: Optional[Callable[[AcknowledgeAction], None]],
     ) -> None:
+        """
+        TODO: update function to reflect the interface definition:
+            service_message: TransportServicePayload,
+            message_complete_callback: MessageCompleteFunction,
+            metadata: Dict[str, Any],
+        """
         if message["tag"] == "request":
             result = f"expected request response from {message['service']}.{message['method']}"
         elif message["tag"] == "command":

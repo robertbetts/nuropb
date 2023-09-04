@@ -59,24 +59,16 @@ async def publish_event(api: RMQAPI):
 
 async def main():
     amqp_url = "amqp://guest:guest@127.0.0.1:5672/sandbox"
-    instance_id = uuid4().hex
-
-    transport_settings = dict(
-        prefetch_count=10,
-        default_ttl=60 * 30 * 1000,  # 30 minutes
-    )
     api = RMQAPI(
-        instance_id=instance_id,
         amqp_url=amqp_url,
-        transport_settings=transport_settings,
     )
     await api.connect()
 
     total_seconds = 0
     total_sample_count = 0
 
-    batch_size = 5000
-    number_of_batches = 1
+    batch_size = 500
+    number_of_batches = 5
     ioloop = asyncio.get_event_loop()
 
     for _ in range(number_of_batches):
@@ -114,6 +106,7 @@ async def main():
     )
     fut = asyncio.Future()
     await fut
+    logging.info("Client Done")
 
 
 if __name__ == "__main__":

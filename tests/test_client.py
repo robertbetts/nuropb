@@ -2,6 +2,7 @@ import pytest
 from uuid import uuid4
 import logging
 
+from nuropb.interface import NuropbMessageError, NuropbCallAgainReject
 from nuropb.rmq_api import RMQAPI
 
 logging.getLogger("pika").setLevel(logging.WARNING)
@@ -9,29 +10,7 @@ logger = logging.getLogger()
 
 
 @pytest.mark.asyncio
-async def test_async_service_methods(test_settings, test_rmq_url, service_instance):
-    service_name = test_settings["service_name"]
-    instance_id = uuid4().hex
-    transport_settings = dict(
-        dl_exchange=test_settings["dl_exchange"],
-        rpc_bindings=test_settings["rpc_bindings"],
-        event_bindings=test_settings["event_bindings"],
-        prefetch_count=test_settings["prefetch_count"],
-        default_ttl=test_settings["default_ttl"],
-    )
-    service_api = RMQAPI(
-        service_name=service_name,
-        instance_id=instance_id,
-        service_instance=service_instance,
-        amqp_url=test_rmq_url,
-        rpc_exchange="test_rpc_exchange",
-        events_exchange="test_events_exchange",
-        transport_settings=transport_settings,
-    )
-    await service_api.connect()
-    assert service_api.connected is True
-
-    logging.info("SERVICE API CONNECTED")
+async def test_request_response_pass(test_settings, test_rmq_url, service_instance):
 
     instance_id = uuid4().hex
     client_transport_settings = dict(
@@ -49,8 +28,8 @@ async def test_async_service_methods(test_settings, test_rmq_url, service_instan
     await client_api.connect()
     assert client_api.connected is True
     logging.info("CLIENT CONNECTED")
-    service = "test_service"
-    method = "test_async_method"
+    service = "missing_service"
+    method = "test_method"
     params = {"param1": "value1"}
     context = {"context1": "value1"}
     ttl = 60 * 5 * 1000
@@ -69,5 +48,4 @@ async def test_async_service_methods(test_settings, test_rmq_url, service_instan
     assert rpc_response["result"] == f"response from {service}.{method}"
     await client_api.disconnect()
     assert client_api.connected is False
-    await service_api.disconnect()
-    assert service_api.connected is False
+
