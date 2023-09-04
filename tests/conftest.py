@@ -24,7 +24,8 @@ def test_settings():
     start_time = datetime.datetime.utcnow()
 
     """
-            RMQ_AMQP_PORT: ${{ job.services.rabbitmq.ports['5672'] }}
+        Parameters in github actions
+        RMQ_AMQP_PORT: ${{ job.services.rabbitmq.ports['5672'] }}
         RMQ_API_PORT: ${{ job.services.rabbitmq.ports['15672'] }}
     """
     api_port = os.environ.get("RMQ_API_PORT", 15672)
