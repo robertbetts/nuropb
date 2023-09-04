@@ -17,15 +17,15 @@ jobs:
 
     runs-on: ubuntu-latest
 
-#    services:
-#      rabbitmq:
-#        image: rabbitmq:3.8
-#        env:
-#          RABBITMQ_DEFAULT_USER: guest
-#          RABBITMQ_DEFAULT_PASS: guest
-#        ports:
-#          - 5672
-#          - 15672
+    services:
+      rabbitmq:
+        image: rabbitmq:3.12.4-management
+        env:
+          RABBITMQ_DEFAULT_USER: guest
+          RABBITMQ_DEFAULT_PASS: guest
+        ports:
+          - 5672
+          - 15672
 
     steps:
       #----------------------------------------------
@@ -40,8 +40,8 @@ jobs:
       #----------------------------------------------
       #       setup rabbitmq
       #----------------------------------------------
-      - name: RabbitMQ Action with mng
-        uses: mer-team/rabbitmq-mng-action@v1.2
+#      - name: RabbitMQ Action with mng
+#        uses: mer-team/rabbitmq-mng-action@v1.2
 
       #----------------------------------------------
       #  -----  install & configure poetry  -----
