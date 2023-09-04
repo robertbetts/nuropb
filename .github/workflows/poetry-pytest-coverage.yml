@@ -68,8 +68,9 @@ jobs:
       #    run test suite and output coverage file
       #----------------------------------------------
       - name: Test with coverage and pytest
-        RMQ_AMQP_PORT: ${{ job.services.rabbitmq.ports['5672'] }}
-        RMQ_API_PORT: ${{ job.services.rabbitmq.ports['15672'] }}
+        env:
+          RMQ_AMQP_PORT: ${{ job.services.rabbitmq.ports['5672'] }}
+          RMQ_API_PORT: ${{ job.services.rabbitmq.ports['15672'] }}
         run: poetry run coverage run -m pytest && poetry run coverage xml
         #----------------------------------------------
         #    Upload coverage file to codeconv.io
