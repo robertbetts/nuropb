@@ -12,7 +12,7 @@ logger = logging.getLogger("server")
 async def main():
     amqp_url = "amqp://guest:guest@127.0.0.1:5672/sandbox"
     api_url = "http://guest:guest@localhost:15672/api"
-    service_name = "sandbox_service"
+    service_name = "sandbox"
     instance_id = uuid4().hex
 
     transport_settings = dict(
@@ -40,10 +40,10 @@ async def main():
         #     port=2379,
         # ),
     )
-    await container.start()
-
-    fut = asyncio.Future()
-    await fut
+    started = await container.start()
+    if started:
+        fut = asyncio.Future()
+        await fut
     logging.info("Server Done")
 
 

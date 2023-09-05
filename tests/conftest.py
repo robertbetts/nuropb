@@ -77,7 +77,7 @@ def test_rmq_url(test_settings):
 
     create_virtual_host(api_url, rmq_url)
 
-    def message_callback(*args, **kwargs):
+    def message_callback(*args, **kwargs):  # pragma: no cover
         pass
 
     transport_settings = dict(
@@ -132,7 +132,7 @@ def test_rmq_url_static(test_settings):
 
     create_virtual_host(api_url, rmq_url)
 
-    def message_callback(*args, **kwargs):
+    def message_callback(*args, **kwargs):  # pragma: no cover
         pass
 
     transport_settings = dict(

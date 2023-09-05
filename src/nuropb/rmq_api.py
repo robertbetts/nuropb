@@ -94,8 +94,8 @@ class RMQAPI(NuropbInterface):
 
         transport_settings.update(
             {
-                "service_name": service_name,
-                "instance_id": instance_id,
+                "service_name": self._service_name,
+                "instance_id": self._instance_id,
                 "amqp_url": amqp_url,
                 "message_callback": self.receive_transport_message,
                 "rpc_exchange": rpc_exchange,
@@ -150,21 +150,6 @@ class RMQAPI(NuropbInterface):
         :return: None
         """
         await self._transport.stop()
-
-    async def keep_loop_active(self) -> None:  # pragma: no cover
-        """keep_loop_active: keeps the asyncio loop active while the transport is connected
-
-        The factor for introducing this method is that during pytest, the asyncio loop
-        is not always running when expected. there is an 1 cost with this delay, that will
-        impact the performance of the service.
-        TODO: investigate this further and only activate this method when required.
-
-        :return:
-        """
-        logger.info("keeping_loop_active() is starting")
-        while self.connected:
-            await asyncio.sleep(0.001)
-        logger.debug("keeping_loop_active() is stopping")
 
     def receive_transport_message(
         self,
