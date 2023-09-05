@@ -1,12 +1,12 @@
 [tool.poetry]
 name = "nuropb"
-version = "0.1.0"
-description = "NuroPb is a messaging pattern for building distributed systems."
+version = "0.1.1"
+description = "NuroPb - A Distributed Event Driven Service Mesh"
 authors = ["Robert Betts <robert.betts@genoa.io>"]
 readme = "README.md"
 homepage = "https://github.com/robertbetts/nuropb"
 repository = "https://github.com/robertbetts/nuropb"
-keywords = ["python", "api", "event", "rpc", "distributed", "edd"]
+keywords = ["python", "asynchrous", "api", "event", "rpc", "distributed", "edd", "sevice-mesh"]
 classifiers = [
     'Programming Language :: Python :: 3.11',
     'Programming Language :: Python :: 3.10',
