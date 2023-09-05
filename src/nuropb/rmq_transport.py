@@ -598,7 +598,7 @@ class RMQTransport:
                 self._connected_future.set_exception(Exception)
                 self._connecting = False
 
-        # TODO: investigate reasons and methods automatically reopen the channel.
+        # investigate reasons and methods automatically reopen the channel.
         # until a solution is found it will be important to monitor for this condition
 
     def declare_service_queue(self) -> None:
@@ -625,7 +625,7 @@ class RMQTransport:
             )
         else:
             logger.info("Client only, not declaring request queue")
-            # TODO: Check that passing None in here is OK
+            # Check that passing None in here is OK
             self.on_bindok(None, userdata=self._response_queue)
 
     def on_service_queue_declareok(
