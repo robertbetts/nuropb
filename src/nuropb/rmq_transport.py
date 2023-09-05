@@ -598,8 +598,8 @@ class RMQTransport:
                 self._connected_future.set_exception(Exception)
                 self._connecting = False
 
-        # TODO: investigate reasons and methods automatically reopen the channel.
-        # FIXME: until a solution is found it will be important to monitor for this condition
+        # TODO: FIXME: investigate reasons and methods automatically reopen the channel.
+        # until a solution is found it will be important to monitor for this condition
 
     def declare_service_queue(self) -> None:
         """Refresh the request queue on RabbitMQ by invoking the Queue.Declare RPC command. When it
