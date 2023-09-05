@@ -24,6 +24,8 @@ from etcd3 import Client as EtcdClient
 from etcd3.stateful.lease import Lease
 from etcd3.stateful.watch import Watcher, Event
 from etcd3.stateful.transaction import Txn
+from requests.exceptions import HTTPError
+from pika.exceptions import AMQPConnectionError
 
 from nuropb.rmq_api import RMQAPI
 from nuropb.rmq_lib import configure_nuropb_rmq, create_virtual_host
@@ -401,19 +403,29 @@ class ServiceContainer(ServiceRunner):
 
         await self._instance.connect()
 
-    async def start(self) -> None:
+    async def start(self) -> bool:
         """start: starts the container service instance.
         - primary entry point to start the service container.
         :return: None
         """
+        started = False
         try:
             await self.startup_steps()
             logger.info("Container startup complete")
+            started = True
+        except AMQPConnectionError as err:
+            logger.error(f"Startup error connecting to RabbitMQ: {err}")
+        except HTTPError as err:
+            logger.error(f"HTTP error calling RabbitMQ API: {err}")
+        except ValueError as err:
+            logger.error(f"Startup error, likely due to miss configuration: {err}")
         except (asyncio.CancelledError, Exception) as err:
             if isinstance(err, asyncio.CancelledError):
                 logger.info(f"container running future cancelled: {err}")
             else:
                 logger.exception(f"Container running future runtime exception: {err}")
+        finally:
+            return started
 
     async def stop(self) -> None:
         """stop: stops the container service instance.

@@ -10,7 +10,7 @@ logger = logging.getLogger("client")
 
 
 async def make_request(api: RMQAPI):
-    service = "sandbox_service"
+    service = "sandbox"
     method = "test_method"
     params = {"param1": "value1"}
     context = {"context1": "value1"}
@@ -28,7 +28,7 @@ async def make_request(api: RMQAPI):
 
 
 async def make_command(api: RMQAPI):
-    service = "sandbox_service"
+    service = "sandbox"
     method = "test_method"
     params = {"param1": "value1"}
     context = {"context1": "value1"}

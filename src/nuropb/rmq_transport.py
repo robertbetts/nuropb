@@ -182,9 +182,9 @@ class RMQTransport:
     _channel: Channel | None
     _consumer_tags: Set[Any]
     _consuming: bool
+    _connecting: bool
     _closing: bool
     _connected: bool
-    _reconnect: bool
     _was_consuming: bool
 
     def __init__(
@@ -225,9 +225,9 @@ class RMQTransport:
                 Experiment with larger values for higher throughput in your user case.
         :param int default_ttl: The default time to live for messages in milliseconds, defaults to 12 hours.
         """
-        self._reconnect = True
         self._connected = False
         self._closing = False
+        self._connecting = False
         self._was_consuming = False
         self._consuming = False
 
@@ -426,7 +426,6 @@ class RMQTransport:
         IOLoop will be buffered but not processed.
 
         """
-        self._reconnect = False
         if not self._closing:
             logger.info("Stopping")
             if self._consuming:
@@ -477,7 +476,7 @@ class RMQTransport:
             }
         )
         self._connection = conn
-
+        self._connecting = True
         return self._connected_future
 
     def disconnect(self) -> Awaitable[bool]:
@@ -512,6 +511,7 @@ class RMQTransport:
            The connection
         """
         logger.info("Connection opened - now opening channel")
+
         self.open_channel()
 
     def on_connection_open_error(
@@ -528,6 +528,10 @@ class RMQTransport:
         if self._connected_future is not None and not self._connected_future.done():
             self._connected_future.set_exception(err)
 
+        if self._connecting:
+            self._connecting = False
+            # self.connect()
+
     def on_connection_closed(
         self, _connection: AsyncioConnection, reason: Exception
     ) -> None:
@@ -540,16 +544,7 @@ class RMQTransport:
             connection.
 
         """
-        logger.warning("connection closed for reason %s", reason)
-        self._channel = None
-        if not self._closing:
-            logger.warning("Possible reconnect necessary")
-
-        if self._connected_future is not None and not self._connected_future.done():
-            self._connected_future.set_exception(
-                RuntimeError(f"Connection closed for reason: {reason}")
-            )
-
+        logger.warning("Connection closed. reason: %s", reason)
         if (
             self._disconnected_future is not None
             and not self._disconnected_future.done()
@@ -557,6 +552,13 @@ class RMQTransport:
             self._disconnected_future.set_result(True)
 
         self._connected = False
+        self._channel = None
+
+        if self._closing:
+            self._closing = False
+        else:
+            self._connecting = False
+            self.connect()
 
     def open_channel(self) -> None:
         """Open a new channel with RabbitMQ by issuing the Channel.Open RPC command. When RabbitMQ
@@ -588,33 +590,16 @@ class RMQTransport:
         :param Exception reason: why the channel was closed
         """
         if isinstance(reason, ChannelClosedByBroker):
-            logger.critical("Channel %i was closed by broker: %s", channel, reason)
-            if reason.reply_code == 404:
-                logger.error(
-                    f"""\n\n
-RabbitMQ channel closed by broker with reply_code: {reason.reply_code} and reply_text: {reason.reply_text}
-This is usually caused by a misconfiguration of the RabbitMQ broker.
-Please check the RabbitMQ broker configuration and restart the service:
+            logger.critical(
+                f"RabbitMQ channel {channel} closed by broker with reply_code: {reason.reply_code} "
+                f"and reply_text: {reason.reply_text}"
+            )
+            if self._connected_future and not self._connected_future.done():
+                self._connected_future.set_exception(Exception)
+                self._connecting = False
 
-RabbitMQ url: {obfuscate_credentials(self._amqp_url)}
-
-Check that the following exchanges, queues and bindings exist:
-    Exchange: {self._rpc_exchange}
-    Exchange: {self._events_exchange}
-    Exchange: {self._dl_exchange}
-    Queue: {self._dl_queue}
-    Queue: {self._service_queue}
-    Queue: {self._response_queue}
-    Bindings: {self._rpc_bindings}
-    Bindings: {self._event_bindings}
-\n\n"""
-                )
-                if self._connected_future and not self._connected_future.done():
-                    self._connected_future.set_exception(
-                        ServiceNotConfigured(
-                            f"RabbitMQ not properly configured: {reason}"
-                        )
-                    )
+        # TODO: investigate reasons and methods automatically reopen the channel.
+        # FIXME: until a solution is found it will be important to monitor for this condition
 
     def declare_service_queue(self) -> None:
         """Refresh the request queue on RabbitMQ by invoking the Queue.Declare RPC command. When it
@@ -767,7 +752,7 @@ Check that the following exchanges, queues and bindings exist:
 
         # Start consuming the requests queue
         if not self._client_only:
-            logger.info("Consuming Requests, Events and Commands")
+            logger.info("Ready to consume requests, events and commands")
             self._consumer_tags.add(
                 self._channel.basic_consume(
                     on_message_callback=functools.partial(
@@ -782,6 +767,7 @@ Check that the following exchanges, queues and bindings exist:
 
         if self._connected_future:
             self._connected_future.set_result(True)
+            self._connecting = False
         self._connected = True
 
     def on_consumer_cancelled(self, method_frame: pika.frame.Method) -> None:
