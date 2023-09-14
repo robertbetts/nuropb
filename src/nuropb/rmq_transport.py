@@ -803,7 +803,7 @@ class RMQTransport:
         nuropb_type = properties.headers.get("nuropb_type", "unknown")
         nuropb_version = properties.headers.get("nuropb_version", "unknown")
         logger.warning(
-            f"Could not route {nuropb_type} message ro service {method.routing_key} "
+            f"Could not route {nuropb_type} message to service {method.routing_key} "
             f"correlation_id: {correlation_id} "
             f"trace_id: {trace_id} "
             f": {method.reply_code}, {method.reply_text}"

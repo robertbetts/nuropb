@@ -1,7 +1,6 @@
 import logging
 from typing import Dict, Optional, Any, Union, cast
 from uuid import uuid4
-import asyncio
 from asyncio import Future
 
 from nuropb.interface import (
@@ -315,13 +314,25 @@ class RMQAPI(NuropbInterface):
             f"service: {service}\n"
             f"method: {method}\n"
         )
-        self._transport.send_message(
-            exchange=self._transport.rpc_exchange,
-            routing_key=routing_key,
-            body=body,
-            properties=properties,
-            mandatory=True,
-        )
+        try:
+            self._transport.send_message(
+                exchange=self._transport.rpc_exchange,
+                routing_key=routing_key,
+                body=body,
+                properties=properties,
+                mandatory=True,
+            )
+        except Exception as e:
+            if rpc_response is False:
+                return {
+                    "tag": "response",
+                    "context": context,
+                    "result": None,
+                    "error": {
+                        "error": f"{type(e).__name__}",
+                        "description": f"Error sending request message: {e}",
+                    }
+                }
         response: PayloadDict | None = None
         try:
             response = await response_future
