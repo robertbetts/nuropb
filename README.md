@@ -36,13 +36,14 @@ and ordered event streaming over Kafka. Kafka has also proved a great tool for a
 messages.
 
 Where does the name come from? NuroPb is a contraction of the word neural and the scientific symbol for Lead. Lead
-associated with plumbing. So NuroPb is a a system's neural plumbing framework. 
+associated with plumbing. So NuroPb is a system's neural plumbing framework. 
 
 ## Getting started
-
+Install the Python package
 ```
 pip install nuropb
 ```
+
 
 
 
