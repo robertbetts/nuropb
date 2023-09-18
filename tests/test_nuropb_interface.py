@@ -130,7 +130,6 @@ class TestInterface(NuropbInterface):
             correlation_id=uuid4().hex,
             trace_id=trace_id,
             context=context,
-            reply_to="",
         )
 
         def acknowledge_function(action: AcknowledgeAction) -> None:

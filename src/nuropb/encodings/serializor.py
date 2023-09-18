@@ -1,5 +1,3 @@
-from typing import Optional
-
 from nuropb.encodings.json_serialisation import JsonSerializor
 from nuropb.interface import PayloadDict
 

@@ -88,7 +88,6 @@ class RequestPayloadDict(TypedDict):
     service: str
     method: str
     params: Dict[str, Any]
-    reply_to: str
 
 
 class CommandPayloadDict(TypedDict):
@@ -143,6 +142,7 @@ class ResponsePayloadDict(TypedDict):
     result: Any
     error: Optional[Dict[str, Any]]
     warning: Optional[str]
+    reply_to: str
 
 
 PayloadDict = Union[
@@ -218,21 +218,19 @@ ConnectionCallbackFunction = Callable[[Type["NuropbInterface"], str, str], None]
 class NuropbException(Exception):
     """NuropbException: represents a base exception for all exceptions raised by the nuropb API
     although the input parameters are optional, it is recommended that the message is set to a
-    meaningful value and the nuropb_lifecycle and nuropb_message are set to the values that were
-    present when the exception was raised.
+    meaningful value and the nuropb_message is set to the values that were present when the
+    exception was raised.
     """
 
     description: str
-    lifecycle: NuropbLifecycleState | None
-    payload: PayloadDict | TransportServicePayload | TransportRespondPayload | None
-    exception: Exception | BaseException | None
+    payload: PayloadDict | TransportServicePayload | TransportRespondPayload | Dict[str, Any] | None
+    exception: BaseException | None
 
     def __init__(
         self,
         description: Optional[str] = None,
-        lifecycle: Optional[NuropbLifecycleState] = None,
         payload: Optional[PayloadDict] = None,
-        exception: Optional[Exception] = None,
+        exception: Optional[BaseException] = None,
     ):
         if description is None:
             description = (
@@ -242,11 +240,10 @@ class NuropbException(Exception):
             )
         super().__init__(description)
         self.description = description
-        self.lifecycle = lifecycle
         self.payload = payload
         self.exception = exception
 
-    def to_dict(self):
+    def to_dict(self) -> Dict[str, Any]:
         underlying_exception = str(self.exception) if self.exception else str(self)
         description = self.description if self.description else underlying_exception
         return {
@@ -256,56 +253,29 @@ class NuropbException(Exception):
 
 
 class NuropbTimeoutError(NuropbException):
-    """NuropbTimeoutError: represents an error that occurred when a timeout was reached.
-
-    The handling of this error will depend on the message type, context and where in the lifecycle
-    of the message the timeout occurred.
-    """
-
-    pass
+    """NuropbTimeoutError: represents an error that occurred when a timeout was reached."""
 
 
 class NuropbTransportError(NuropbException):
-    """NuropbTransportError: represents an error that inside the plumbing.
-
-    The handling of this error will depend on the message type, context and where in the lifecycle
-    of the message the timeout occurred.
-    """
-
-    pass
+    """NuropbTransportError: represents an error that inside the plumbing."""
 
 
 class NuropbMessageError(NuropbException):
     """NuropbMessageError: represents an error that occurred during the encoding or decoding of a
     message.
-
-    The handling of this error will depend on the message type, context and where in the lifecycle
-    of the message the timeout occurred.
     """
-
-    pass
 
 
 class NuropbHandlingError(NuropbException):
     """NuropbHandlingError: represents an error that occurred during the execution or fulfilment
     of a request or command. An error response is returned to the requester.
-
-    The handling of this error will depend on the message type, context and where in the lifecycle
-    of the message the timeout occurred.
     """
-
-    pass
 
 
 class NuropbDeprecatedError(NuropbHandlingError):
     """NuropbDeprecatedError: represents an error that occurred during the execution or fulfilment
     of a request, command or event topic that has been marked deprecated.
-
-    An error response is returned to the requester ONLY for requests and commands.
-    Events will be rejected with a NACK with requeue=False.
     """
-
-    pass
 
 
 class NuropbValidationError(NuropbException):
@@ -316,8 +286,6 @@ class NuropbValidationError(NuropbException):
     Events will be rejected with a NACK with requeue=False.
     """
 
-    pass
-
 
 class NuropbAuthenticationError(NuropbException):
     """NuropbAuthenticationError: when this exception is raised, the transport layer will ACK the
@@ -326,15 +294,10 @@ class NuropbAuthenticationError(NuropbException):
     This exception occurs whe the identity of the requester can not be validated. for example
     an unknown, invalid or expired user identifier or auth token.
 
-    The handling of this error will depend on the message type, context and where in the lifecycle
-    of the message the timeout occurred.
-
     In most cases, the requester will not be able to recover from this error and will need provide
     valid credentials and retry the request. The approach to this retry outside the scope of the
     nuropb API.
     """
-
-    pass
 
 
 class NuropbAuthorizationError(NuropbException):
@@ -343,9 +306,6 @@ class NuropbAuthorizationError(NuropbException):
 
     This exception occurs whe the requester does not have the required privileges to perform the
     requested action of either a request or command.
-
-    The handling of this error will depend on the message type, context and where in the lifecycle
-    of the message the timeout occurred.
 
     In most cases, the requester will not be able to recover from this error and will need provide
     valid credentials and retry the request. The approach to this retry outside the scope of the
@@ -411,13 +371,11 @@ class NuropbSuccess(NuropbException):
         self,
         result: Any,
         description: Optional[str] = None,
-        payload: ResponsePayloadDict = None,
-        lifecycle: Optional[NuropbLifecycleState] = None,
+        payload: Optional[ResponsePayloadDict] = None,
         events: Optional[List[EventType]] = None,
     ):
         super().__init__(
             description=description,
-            lifecycle=lifecycle,
             payload=payload,
             exception=None,
         )
@@ -485,14 +443,6 @@ class NuropbInterface(ABC):
         For failures service messages are handled, other than for events, a response including
         details of the error is returned to the flow originator.
 
-        The Exception type raised during the message handling influences the lifecycle flow:
-        Some of these could be:
-        - NuropbTimeoutError
-        - NuropbHandlingError
-        - NuropbAuthenticationError
-        - NuropbCallAgain
-        - NuropbSuccess
-
         :param service_message: TransportServicePayload
         :param message_complete_callback: MessageCompleteFunction
         :param metadata: Dict[str, Any] - metric gathering information
@@ -519,12 +469,12 @@ class NuropbInterface(ABC):
         :param context: additional information that represent the context in which the request is executed.
             The must be easily serializable to JSON.
         :param ttl: the time to live of the request in milliseconds. After this time and dependent on the
-            lifecycle state and underlying transport, it will not be consumed by the target service and
+            state and underlying transport, it will not be consumed by the target service and
             should be assumed by the requester to have failed with an undetermined state.
         :param trace_id: an identifier to trace the request over the network (e.g. uuid4 hex string)
         :param rpc_response: if True (default), the actual response of the RPC call is returned and where
-            there was an error during the lifecycle, this is raised as an exception.
-            Where rpc_response is a ResponsePayloadDict, is returned.
+            there was an error, that is raised as an exception. Where rpc_response is a ResponsePayloadDict,
+             it is returned.
 
         :return: ResponsePayloadDict
         """
@@ -536,7 +486,6 @@ class NuropbInterface(ABC):
         method: str,
         params: Dict[str, Any],
         context: Dict[str, Any],
-        wait_for_ack: bool = False,
         ttl: Optional[int] = None,
         trace_id: Optional[str] = None,
     ) -> None:
@@ -550,9 +499,6 @@ class NuropbInterface(ABC):
         :param params: the method arguments, these must be easily serializable to JSON
         :param context: additional information that represent the context in which the request is executed.
                         The must be easily serializable to JSON.
-        :param wait_for_ack: if True, the command will wait for an acknowledgement from the transport layer that the
-        target has received the command. If False, the request will return immediately after the request is
-        delivered to the transport layer.
         :param ttl: the time to live of the request in milliseconds. After this time and dependent on the
                     underlying transport, it will not be consumed by the target
                     or

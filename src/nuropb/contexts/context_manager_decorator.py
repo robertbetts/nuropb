@@ -1,23 +1,23 @@
 import inspect
-from typing import Optional, Any
+from typing import Optional, Any, Callable
 from functools import wraps
 
 from nuropb.contexts.context_manager import NuropbContextManager
 
 
-def method_has_nuropb_context(method: callable) -> bool:
+def method_has_nuropb_context(method: Callable[..., Any]) -> bool:
     """This function checks if a method has been decorated with @nuropb_context
-    :param method: callable
+    :param method: Callable
     :return: bool
     """
     return getattr(method, "__nuropb_context__", False)
 
 
 def nuropb_context(
-    original_method=None,
+    original_method: Optional[Callable[..., Any]] = None,
     *,
-    context_parameter: Optional[str] = "ctx",
-    suppress_exceptions: Optional[bool] = False,
+    context_parameter: str = "ctx",
+    suppress_exceptions: bool = False,
 ) -> Any:
     """This decorator function injects a NuropbContext instance into a method that has ctx:NuropbContext
     as an argument. The ctx parameter of the decorated method is hidden from the method's signature visible
@@ -44,17 +44,17 @@ def nuropb_context(
     :param suppress_exceptions: bool
     :return: a decorated method
     """
-    context_parameter = "ctx" if context_parameter is None else context_parameter
+    context_parameter = context_parameter or "ctx"
     suppress_exceptions = False if suppress_exceptions is None else suppress_exceptions
 
-    def decorator(method):
+    def decorator(method: Callable[..., Any]) -> Callable[..., Any]:
         if context_parameter not in inspect.signature(method).parameters:
             raise TypeError(
                 f"method {method.__name__} does not have {context_parameter} as an argument"
             )
 
         @wraps(method)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
             """validate calling arguments"""
             if len(args) < 2 or not isinstance(args[1], (NuropbContextManager, dict)):
                 raise TypeError(
@@ -78,9 +78,8 @@ def nuropb_context(
             kwargs[context_parameter] = ctx
             return method(*args[1:], **kwargs)
 
-
-        wrapper.__nuropb_context__ = True
-        wrapper.__nuropb_context_arg__ = "ctx"
+        setattr(wrapper, "__nuropb_context__", True)
+        setattr(wrapper, "__nuropb_context_arg__",  context_parameter)
         return wrapper
 
     if original_method:

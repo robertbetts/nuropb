@@ -22,7 +22,7 @@ class NuropbContextManager:
     they are discarded.
     """
 
-    _suppress_exceptions: bool | None
+    _suppress_exceptions: bool
     _nuropb_payload: Dict[str, Any] | None
     _context: Dict[str, Any]
     _user_claims: Dict[str, Any] | None
@@ -124,7 +124,7 @@ class NuropbContextManager:
         **** Context Manager sync and async methods ****
     """
 
-    def __enter__(self):
+    def __enter__(self) -> Any:
         """This method is called when entering a context manager with a with statement"""
         if self._done:
             raise RuntimeError("Context manager has already exited")
@@ -134,7 +134,7 @@ class NuropbContextManager:
 
         return self
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> Any:
         return self.__enter__()
 
     def __exit__(

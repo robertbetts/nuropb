@@ -1,8 +1,9 @@
 import logging
 import functools
-from typing import List, Set, Optional, Any, Dict, Awaitable, cast, Literal, TypedDict
+from typing import List, Set, Optional, Any, Dict, Awaitable, Literal, TypedDict
 import asyncio
 import time
+from cryptography.hazmat.primitives.asymmetric import rsa
 
 import pika
 from pika import connection
@@ -14,9 +15,7 @@ from pika.frame import Method
 
 from nuropb.encodings.serializor import encode_payload, decode_payload
 from nuropb.interface import (
-    PayloadDict,
     NuropbTransportError,
-    NuropbLifecycleState,
     TransportServicePayload,
     NUROPB_PROTOCOL_VERSIONS_SUPPORTED,
     NUROPB_MESSAGE_TYPES,
@@ -55,7 +54,7 @@ class RabbitMQConfiguration(TypedDict):
 
 logger = logging.getLogger(__name__)
 
-connection.PRODUCT = "NuroPb Distributed RPC-Event Library"
+connection.PRODUCT = "NuroPb Distributed RPC-Event Service Mesh Library"
 """ TODO: configure the RMQ client connection attributes in the pika client properties.
 See related TODO below in this module
 """
@@ -139,7 +138,6 @@ class RMQTransport:
     _is_leader: bool
     _is_rabbitmq_configured: bool
 
-    _ioloop: asyncio.AbstractEventLoop | None
     _connection: AsyncioConnection | None
     _channel: Channel | None
     _consumer_tags: Set[Any]
@@ -166,7 +164,6 @@ class RMQTransport:
         prefetch_count: Optional[int] = None,
         default_ttl: Optional[int] = None,
         client_only: Optional[bool] = None,
-        ioloop: Optional[asyncio.AbstractEventLoop] = None,
     ):  # NOSONAR
         """Create a new instance of the consumer class, passing in the AMQP
         URL used to connect to RabbitMQ.
@@ -193,7 +190,6 @@ class RMQTransport:
         self._was_consuming = False
         self._consuming = False
 
-        self._ioloop = ioloop
         self._connection = None
         self._channel = None
         self._consumer_tags = set()
@@ -232,13 +228,6 @@ class RMQTransport:
 
         self._connected_future = None
         self._disconnected_future = None
-
-    @property
-    def ioloop(self) -> asyncio.AbstractEventLoop:
-        """ioloop: returns the asyncio event loop"""
-        if self._ioloop is None:
-            self._ioloop = asyncio.get_event_loop()
-        return self._ioloop
 
     @property
     def service_name(self) -> str:
@@ -416,26 +405,12 @@ class RMQTransport:
         logger.info("Connecting to %s", obfuscate_credentials(self._amqp_url))
 
         self._connected_future = asyncio.Future()
-        client_properties = {
-            "service_name": self._service_name,
-            "instance_id": self._instance_id,
-            "client_only": self._client_only,
-            "nuropb_protocol": NUROPB_PROTOCOL_VERSION,
-            "nuropb_version": NUROPB_VERSION,
-        }
 
         conn = AsyncioConnection(
             parameters=pika.URLParameters(self._amqp_url),
             on_open_callback=self.on_connection_open,
             on_open_error_callback=self.on_connection_open_error,
             on_close_callback=self.on_connection_closed,
-            custom_ioloop=self.ioloop,
-        )
-        # TODO: overwrite the pika client properties with our own, see top of module too
-        conn._client_properties.update(
-            {
-                "product": "NuroPb Distributed RPC-Event Library",
-            }
         )
         self._connection = conn
         self._connecting = True
@@ -563,7 +538,7 @@ class RMQTransport:
         # investigate reasons and methods automatically reopen the channel.
         # until a solution is found it will be important to monitor for this condition
 
-    def declare_service_queue(self) -> None:
+    def declare_service_queue(self, frame: pika.frame.Method) -> None:
         """Refresh the request queue on RabbitMQ by invoking the Queue.Declare RPC command. When it
         is complete, the on_service_queue_declareok method will be invoked by pika.
 
@@ -588,7 +563,7 @@ class RMQTransport:
         else:
             logger.info("Client only, not declaring request queue")
             # Check that passing None in here is OK
-            self.on_bindok(None, userdata=self._response_queue)
+            self.on_bindok(frame, userdata=self._response_queue)
 
     def on_service_queue_declareok(
         self, frame: pika.frame.Method, _userdata: str
@@ -651,7 +626,7 @@ class RMQTransport:
         """
         _ = frame
         logger.info("Response queue declared ok: %s", _userdata)
-        self.declare_service_queue()
+        self.declare_service_queue(frame)
 
     def on_bindok(self, _frame: pika.frame.Method, userdata: str) -> None:
         """Invoked by pika when the Queue.Bind method has completed. At this
@@ -661,11 +636,6 @@ class RMQTransport:
         :param str|unicode userdata: Extra user data (queue name)
         """
         logger.info("Response queue bound ok: %s", userdata)
-        """This method sets up the consumer prefetch to only be delivered
-        one message at a time. The consumer must acknowledge this message
-        before RabbitMQ will deliver another one. You should experiment
-        with different prefetch values to achieve desired performance.
-        """
         if self._channel is None:
             raise RuntimeError("RMQ transport channel is not open")
 
@@ -679,14 +649,6 @@ class RMQTransport:
         which will invoke the needed RPC commands to start the process.
 
         :param pika.frame.Method _frame: The Basic.QosOk response frame
-
-        This method sets up the consumer by first calling
-        add_on_cancel_callback so that the object is notified if RabbitMQ
-        cancels the consumer. It then issues the Basic.Consume RPC command
-        which returns the consumer tag that is used to uniquely identify the
-        consumer with RabbitMQ. We keep the value to use it when we want to
-        cancel consuming. The on_service_message method is passed in as a callback pika
-        will invoke when a message is fully received.
 
         """
         logger.info("QOS set to: %d", self._prefetch_count)
@@ -826,50 +788,71 @@ class RMQTransport:
 
     def send_message(
         self,
-        exchange: str,
-        routing_key: str,
-        body: bytes,
-        properties: Dict[str, Any],
-        mandatory: Optional[bool] = None,
+        payload: Dict[str, Any],
+        expiry: Optional[int] = None,
+        priority: Optional[int] = None,
+        encoding: str = "json",
+        publickey: Optional[rsa.RSAPrivateKey] = None,
     ) -> None:
         """Send a message to over the RabbitMQ Transport
 
-            TODO: Consider the handling if the channel that's closed. Wait and retry on a new channel?
+            TODO: Consider the alternative handling if the channel that's closed.
+            - Wait and retry on a new channel?
             - setup a retry queue?
             - should there be a high water mark for the number of retries?
             - should new messages not be consumed until the channel is re-established and retry queue drained?
 
-        :param str exchange: The exchange to publish to
-        :param str routing_key: The routing key to publish with
-        :param bytes body: The message body
-        :param Dict[str, Any] properties: The message properties
-        :param bool mandatory: The mandatory flag, defaults to True
+        :param Dict[str, Any] payload: The message contents
+        :param expiry: The message expiry in milliseconds
+        :param priority: The message priority
+        :param encoding: The encoding of the message
+        :param publickey: The public key to use for encryption, belongs to the target service
         """
-        mandatory = True if mandatory is None else mandatory
-        headers = properties.setdefault("headers", {})
-        headers.update(
-            {
-                "nuropb_protocol": NUROPB_PROTOCOL_VERSION,
-            }
-        )
-        properties["headers"] = headers
-        if self._channel is None or self._channel.is_closed:
-            lifecycle: NuropbLifecycleState = "client-send"
-            if properties.get("headers", {}).get("nuropb_type", "") == "response":
-                lifecycle = "service-reply"
+        _ = publickey
 
-            payload: PayloadDict | None = None
-            if properties.get("content_type", "") == "application/json":
-                payload = cast(PayloadDict, decode_payload(body, "json"))
+        mandatory = False
+        exchange = ""
+        reply_to = ""
 
-            raise NuropbTransportError(
-                description="RMQ channel closed, send message",
-                lifecycle=lifecycle,
-                payload=payload,
-                exception=None,
-            )
-
+        if payload["tag"] == "event":
+            exchange = self._events_exchange
+            routing_key = payload["topic"]
+        elif payload["tag"] in ("request", "command"):
+            mandatory = True
+            exchange = self._rpc_exchange
+            routing_key = payload["service"]
+            reply_to = self._response_queue
+        elif payload["tag"] == "response":
+            routing_key = payload["reply_to"]
         else:
+            raise ValueError(f"Unknown payload type {payload['tag']}")
+
+        if encoding == "json":
+            body = encode_payload(payload, "json")
+        else:
+            raise ValueError(f"unsupported encoding {encoding}")
+
+        properties = dict(
+            content_type="application/json",
+            correlation_id=payload["correlation_id"],
+            reply_to=reply_to,
+            headers={
+                "nuropb_protocol": NUROPB_PROTOCOL_VERSION,
+                "nuropb_version": NUROPB_VERSION,
+                "nuropb_type": payload["tag"],
+                "trace_id": payload["trace_id"],
+            },
+        )
+        if expiry:
+            properties["expiration"] = str(expiry)
+        if priority:
+            properties["priority"] = priority
+
+        if not (self._channel is None or self._channel.is_closed):
+            """Check that the channel is in a valid state before sending the response
+            # TODO: Consider blocking any new messages until the channel is re-established
+            and the message is sent? Especially when it is a response message.
+            """
             basic_properties = pika.BasicProperties(**properties)
             self._channel.basic_publish(
                 exchange=exchange,
@@ -877,6 +860,13 @@ class RMQTransport:
                 body=body,
                 properties=basic_properties,
                 mandatory=mandatory,
+            )
+
+        else:
+            raise NuropbTransportError(
+                description="RMQ channel closed",
+                payload=payload,
+                exception=None,
             )
 
     @classmethod
@@ -925,50 +915,6 @@ class RMQTransport:
         else:
             raise ValueError(f"Invalid action {action}")
 
-    def send_response_messages(
-        self, reply_to: str, message: TransportRespondPayload
-    ) -> None:
-        """Send response to request messages and also event messages. These messages can be over
-        new connections and channels. Any exceptions need to be contained and handled within the
-        scope of this method.
-        """
-        correlation_id = "unknown"
-        trace_id = "unknown"
-        try:
-            nuropb_type = message["nuropb_type"]
-            correlation_id = message["correlation_id"] or "unknown"
-            trace_id = message["trace_id"] or "unknown"
-            if nuropb_type == "response":
-                routing_key = reply_to
-                exchange = ""
-                ttl = ""
-            else:
-                routing_key = ""
-                exchange = self._events_exchange
-                ttl = str(message.get("ttl") or self._default_ttl)
-
-            body = encode_payload(message["nuropb_payload"], "json")
-            properties = {
-                "content_type": "application/json",
-                "correlation_id": message["correlation_id"],
-                "headers": {
-                    "nuropb_type": nuropb_type,
-                    "nuropb_protocol": NUROPB_PROTOCOL_VERSION,
-                    "trace_id": trace_id,
-                },
-            }
-            if ttl:
-                properties["expiration"] = ttl
-
-            self.send_message(
-                exchange, routing_key, body, properties=properties, mandatory=True
-            )
-        except Exception as error:
-            logger.critical(
-                f"Error sending message in response to request correlation_id: {correlation_id}, trace_id: {trace_id}"
-            )
-            logger.exception(f"Failed to send response message: Error: {error}")
-
     @classmethod
     def metadata_metrics(cls, metadata: Dict[str, Any]) -> None:
         """Invoked by the transport after a service message has been processed.
@@ -981,6 +927,8 @@ class RMQTransport:
         :param metadata: information to drive message processing metrics
         :return: None
         """
+        metadata["end_time"] = time.time()
+        metadata["duration"] = metadata["end_time"] - metadata["start_time"]
         logger.debug(f"metadata log: {metadata}")
 
     def on_service_message_complete(
@@ -1015,6 +963,8 @@ class RMQTransport:
         delivery_tag = basic_deliver.delivery_tag
         redelivered = basic_deliver.redelivered
         reply_to = properties.reply_to
+        trace_id = properties.headers.get("trace_id", "unknown")
+        correlation_id = properties.correlation_id
 
         if redelivered is True and acknowledgement == "nack":
             if verbose:
@@ -1023,8 +973,6 @@ class RMQTransport:
                 )
             acknowledgement = "reject"
             if properties.headers.get("nuropb_type", "") == "request":
-                trace_id = properties.headers.get("trace_id", "unknown")
-                correlation_id = properties.correlation_id
                 exception = NuropbCallAgainReject(
                     description=(
                         f"Rejecting second call again request for trace_id: {trace_id}"
@@ -1044,18 +992,24 @@ class RMQTransport:
         )
 
         for respond_message in response_messages:
-            reply_to = reply_to or ""
-            self.send_response_messages(reply_to, respond_message)
+            respond_payload = respond_message["nuropb_payload"]
+            if respond_payload["tag"] == "response":
+                respond_payload["reply_to"] = reply_to
+            respond_payload["correlation_id"] = correlation_id
+            respond_payload["trace_id"] = trace_id
+
+            self.send_message(
+                payload=respond_payload,
+                priority=None,
+                encoding="json",
+                publickey=None,
+            )
 
         """ NOTE - METADATA: keep this dictionary in sync with across all these methods:
             - on_service_message, on_service_message_complete
             - on_response_message, on_response_message_complete
             - metadata_metrics
         """
-        private_metadata["end_time"] = time.time()
-        private_metadata["duration"] = (
-            private_metadata["end_time"] - private_metadata["start_time"]
-        )
         private_metadata["acknowledgement"] = acknowledgement
         private_metadata["message_count"] = len(response_messages)
         private_metadata["flow_complete"] = True
@@ -1288,10 +1242,6 @@ nuropb_version: {nuropb_version}
         - on_response_message, on_response_message_complete
         - metadata_metrics
         """
-        private_metadata["end_time"] = time.time()
-        private_metadata["duration"] = (
-            private_metadata["end_time"] - private_metadata["start_time"]
-        )
         private_metadata["acknowledgement"] = acknowledgement
         private_metadata["message_count"] = 0
         private_metadata["flow_complete"] = True

@@ -12,7 +12,7 @@
 """
 import asyncio
 import logging
-from typing import Any, Tuple, List, Awaitable
+from typing import Any, Tuple, List, Awaitable, Dict
 
 from tornado.concurrent import is_future
 import pika.spec
@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 verbose = False
 
 
-def error_dict_from_exception(exception: Exception | BaseException) -> dict[str, str]:
+def error_dict_from_exception(exception: Exception | BaseException) -> Dict[str, str]:
     """Creates an error dict from an exception
     :param exception:
     :return:
@@ -71,7 +71,7 @@ def create_transport_response_from_rmq_decode_exception(
 
     acknowledgement: AcknowledgeAction = "reject"
     transport_responses: List[TransportRespondPayload] = []
-    context = {}
+    context: Dict[str, Any] = {}
     correlation_id = properties.correlation_id
     trace_id = properties.headers.get("trace_id", "unknown")
 
@@ -83,6 +83,7 @@ def create_transport_response_from_rmq_decode_exception(
         result=None,
         error=error_dict_from_exception(exception=exception),
         warning=None,
+        reply_to="",
     )
     transport_responses.append(
         TransportRespondPayload(
@@ -122,6 +123,7 @@ def create_transport_responses_from_exceptions(
         result=None,
         error=None,
         warning=None,
+        reply_to="",
     )
     event_template = EventPayloadDict(
         tag="event",
@@ -191,7 +193,7 @@ def create_transport_responses_from_exceptions(
                     event_payload.update(
                         {
                             "topic": event["topic"],
-                            "event": event["encoded_payload"],
+                            "event": event["payload"],
                             "target": event["target"],
                         }
                     )
@@ -293,6 +295,7 @@ def handle_execution_result(
                 trace_id=service_message["trace_id"],
                 context=service_message["nuropb_payload"]["context"],
                 warning=None,
+                reply_to="",
             )
             responses.append(
                 TransportRespondPayload(
@@ -327,7 +330,6 @@ def execute_request(
         if service_message["nuropb_type"] not in ("request", "command", "event"):
             raise NuropbHandlingError(
                 description=f"Service execution not support for message type {service_message['nuropb_type']}",
-                lifecycle="service-handle",
                 payload=service_message["nuropb_payload"],
                 exception=None,
             )
@@ -350,7 +352,6 @@ def execute_request(
                 else:
                     raise NuropbHandlingError(
                         description=f"error calling instance._event_handler for topic: {topic}",
-                        lifecycle="service-handle",
                         payload=payload,
                         exception=None,
                     )
@@ -372,7 +373,6 @@ def execute_request(
                 ):
                     raise NuropbHandlingError(
                         description="Unknown method {}".format(method_name),
-                        lifecycle="service-handle",
                         payload=payload,
                         exception=None,
                     )
@@ -398,7 +398,6 @@ def execute_request(
                     logger.exception(err)
                 raise NuropbException(
                     description=f"Runtime exception calling {service_name}.{method_name}:{err}",
-                    lifecycle="service-handle",
                     payload=payload,
                     exception=err,
                 )

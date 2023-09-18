@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives.asymmetric import padding
 
 
 def encrypt_payload(payload: str | bytes, key: str | bytes) -> bytes:
-    """Encrypt a encoded_payload with a key
+    """Encrypt encoded_payload with a key
     :param payload: str | bytes
     :param key: str
     :return: bytes
@@ -22,7 +22,7 @@ def encrypt_payload(payload: str | bytes, key: str | bytes) -> bytes:
 
 
 def decrypt_payload(encrypted_payload: str | bytes, key: str | bytes) -> bytes:
-    """Decrypt a encoded_payload with a key
+    """Decrypt encoded_payload with a key
     :param encrypted_payload: str | bytes
     :param key: str
     :return: bytes
@@ -91,7 +91,7 @@ class Encryptor:
         """
         return Fernet.generate_key()
 
-    def add_service_public_key(self, service_name: str, public_key: rsa.RSAPublicKey):
+    def add_service_public_key(self, service_name: str, public_key: rsa.RSAPublicKey) -> None:
         """Add a public key for a service
         :param service_name: str
         :param public_key: rsa.RSAPublicKey
@@ -128,7 +128,7 @@ class Encryptor:
             public_key = self._private_key.public_key()
         else:
             # Mode 1, get public key from the destination service's public key
-            public_key = self._service_public_keys.get(service_name, None)
+            public_key = self._service_public_keys[service_name]
 
         if correlation_id not in self._correlation_id_symmetric_keys:
             # Mode 1, generate a new symmetric key and store it for this correlation_id
@@ -137,7 +137,7 @@ class Encryptor:
         else:
             # Mode 4, use the original received symmetric key to encrypt key
             # pop it from the dict as it is not required again
-            key = self._correlation_id_symmetric_keys.pop(correlation_id, None)
+            key = self._correlation_id_symmetric_keys.pop(correlation_id)
 
         encrypted_key = encrypt_key(key, public_key)
         encrypted_payload = encrypt_payload(payload=payload, key=key)

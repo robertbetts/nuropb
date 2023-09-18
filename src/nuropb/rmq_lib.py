@@ -9,7 +9,7 @@ import requests
 import pika
 from pika.channel import Channel
 
-from nuropb.interface import PayloadDict, NuropbTransportError, NuropbLifecycleState
+from nuropb.interface import PayloadDict, NuropbTransportError
 
 logger = logging.getLogger(__name__)
 
@@ -242,16 +242,13 @@ def nack_message(
     properties: pika.spec.BasicProperties,
     mesg: PayloadDict | None,
     error: Exception | None = None,
-    lifecycle: NuropbLifecycleState | None = None,
 ) -> None:
     """nack_message: nack the message and requeue it, there was likely a recoverable problem with this instance
     while processing the message
     """
     if channel is None or not channel.is_open:
-        lifecycle = "service-handle" if lifecycle is None else lifecycle
         raise NuropbTransportError(
             description="Unable to nack and requeue message, RMQ channel closed",
-            lifecycle=lifecycle,
             payload=mesg,
             exception=error,
         )
@@ -267,14 +264,11 @@ def reject_message(
     properties: pika.spec.BasicProperties,
     mesg: PayloadDict | None,
     error: Exception | None = None,
-    lifecycle: NuropbLifecycleState | None = None,
 ) -> None:
     """reject_message: If the message is not a request, then reject the message and move on"""
     if channel is None or not channel.is_open:
-        lifecycle = "service-handle" if lifecycle is None else lifecycle
         raise NuropbTransportError(
             description="unable to reject message, RMQ channel closed",
-            lifecycle=lifecycle,
             payload=mesg,
             exception=error,
         )
@@ -290,14 +284,11 @@ def ack_message(
     properties: pika.spec.BasicProperties,
     mesg: PayloadDict | None,
     error: Exception | None = None,
-    lifecycle: NuropbLifecycleState | None = None,
 ) -> None:
     """ack_message: ack the message"""
     if channel is None or not channel.is_open:
-        lifecycle = "service-handle" if lifecycle is None else lifecycle
         raise NuropbTransportError(
             description="Unable to ack message, RMQ channel closed",
-            lifecycle=lifecycle,
             payload=mesg,
             exception=error,
         )

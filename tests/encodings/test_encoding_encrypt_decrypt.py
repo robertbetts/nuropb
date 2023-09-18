@@ -48,7 +48,6 @@ def test_encrypted_payload_exchange():
         "service": "test_service",
         "method": "test_async_method",
         "params": {"param1": "value1"},
-        "reply_to": "",
     }
     service_name = "test_service"
     service_private_key = rsa.generate_private_key(

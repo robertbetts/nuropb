@@ -1,7 +1,7 @@
 """ This module provides entire nuropb package with json serialisation logic and features
 # TODO: Re-check the serialised datetime, date, time and timedelta formats. Look for standards.
 """
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 import json
 import datetime
 from decimal import Decimal
@@ -83,7 +83,8 @@ class NuropbEncoder(json.JSONEncoder):
     to_json_compatible, above. Difference is that the json library implements its own
     object traversal logic. In the function it's required to be done explicitly.
     """
-    def default(self, obj):
+
+    def default(self, obj: Any) -> Any:
         if isinstance(obj, datetime.datetime):
             json_string = f"{obj.isoformat()}Z"
             return json_string
@@ -121,7 +122,7 @@ class JsonSerializor(object):
     """ encryption keys related to a given correlation_id
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initializes a new JsonSerializor instance."""
         self._encryption_keys = {}
 

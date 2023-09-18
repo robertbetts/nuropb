@@ -1,14 +1,15 @@
 import logging
 import inspect
-from typing import Optional, Any, get_origin, get_type_hints, get_args
+from typing import Optional, Any, get_origin, get_args, Callable, Dict, Tuple
 from functools import wraps
 from cryptography.hazmat.primitives import serialization
 
 
 logger = logging.getLogger(__name__)
 
+AuthoriseFunc = Callable[[str], Dict[str, Any]]
 
-def method_visible_on_mesh(method: callable) -> bool:
+def method_visible_on_mesh(method: Callable[..., Any]) -> bool:
     """This function checks if a method has been decorated with @publish_to_mesh
     :param method: callable
     :return: bool
@@ -17,17 +18,17 @@ def method_visible_on_mesh(method: callable) -> bool:
 
 
 def publish_to_mesh(
-        original_method=None,
-        *,
-        hide_method: Optional[bool] = False,
-        authorise_func: Optional[callable] = None,
-        context_token_key: Optional[str] = "Authorization",
-        requires_encryption: Optional[bool] = False,
-        description: Optional[str] = None,
+    original_method: Optional[Callable[..., Any]] = None,
+    *,
+    hide_method: Optional[bool] = False,
+    authorise_func: Optional[AuthoriseFunc] = None,
+    context_token_key: Optional[str] = "Authorization",
+    requires_encryption: Optional[bool] = False,
+    description: Optional[str] = None,
 ) -> Any:
-    """ Decorator to expose class methods to the service mesh
+    """Decorator to expose class methods to the service mesh
 
-    When a service instance is connected to the a service mesh via the service mesh client, all
+    When a service instance is connected to a service mesh via the service mesh client, all
     the standard public methods of the service instance is available to the service mesh. Methods
     that start with underscore will always remain hidden. methods that are explicitly marked as
     hidden by publish_to_mesh will also not be published.
@@ -58,23 +59,24 @@ def publish_to_mesh(
     :return:
     """
     hide_method = False if hide_method is None else hide_method
-    context_token_key = "Authorization" if context_token_key is None else context_token_key
+    context_token_key = (
+        "Authorization" if context_token_key is None else context_token_key
+    )
     if authorise_func is not None and not callable(authorise_func):
         raise TypeError("Authorise function must be callable")
     requires_encryption = False if requires_encryption is None else requires_encryption
 
-    def decorator(method):
-
+    def decorator(method: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(method)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
             return method(*args, **kwargs)
 
-        wrapper.__nuropb_mesh_hidden__ = hide_method
-        wrapper.__nuropb_context_token_key__ = context_token_key
-        wrapper.__nuropb_authorise_func__ = authorise_func
-        wrapper.__nuropb_requires_encryption__ = requires_encryption
+        setattr(wrapper, "__nuropb_mesh_hidden__",  hide_method)
+        setattr(wrapper, "__nuropb_context_token_key__", context_token_key)
+        setattr(wrapper, "__nuropb_authorise_func__",  authorise_func)
+        setattr(wrapper, "__nuropb_requires_encryption__", requires_encryption)
         if description:
-            wrapper.__nuropb_description__ = description
+            setattr(wrapper, "__nuropb_description__", description)
         return wrapper
 
     if original_method:
@@ -83,31 +85,32 @@ def publish_to_mesh(
         return decorator
 
 
-def describe_service(class_instance):
-    """ Returns a description of the class methods that will be exposed to the service mesh
-    """
+def describe_service(class_instance: object) -> Dict[str, Any] | None:
+    """Returns a description of the class methods that will be exposed to the service mesh"""
     if class_instance is None:
         logger.warning("No service class base has been input")
         return None
     else:
         service_name = getattr(class_instance, "_service_name", None)
         service_description = getattr(class_instance, "__doc__", None)
-        service_description = service_description.strip() if service_description else service_description
+        service_description = (
+            service_description.strip() if service_description else service_description
+        )
         service_version = getattr(class_instance, "_version", None)
         methods = []
         service_has_encrypted_methods = False
 
         for name, method in inspect.getmembers(class_instance):
-
-            """ all private methods are excluded, regardless if one has been decorated with @publish_to_mesh
-            """
-            if name[0] == '_' or not callable(method):
+            """all private methods are excluded, regardless if one has been decorated with @publish_to_mesh"""
+            if name[0] == "_" or not callable(method):
                 continue
 
             if getattr(method, "__nuropb_mesh_hidden__", False):
                 continue
 
-            requires_encryption = getattr(method, "__nuropb_requires_encryption__", False)
+            requires_encryption = getattr(
+                method, "__nuropb_requires_encryption__", False
+            )
             if requires_encryption and not service_has_encrypted_methods:
                 service_has_encrypted_methods = True
 
@@ -115,13 +118,17 @@ def describe_service(class_instance):
             method_signature = inspect.signature(method)
             required = []
 
-            def map_annotation(arg_props):
+            def map_annotation(arg_props: Any) -> str:
                 annotation = arg_props.annotation
                 label = ""
-                if not (annotation == inspect._empty):
+                if annotation != inspect._empty:
                     origin = get_origin(annotation)
                     if origin is not None:
-                        args = [a for a in get_args(annotation) if a.__name__ not in ("NoneType",)]
+                        args = [
+                            a
+                            for a in get_args(annotation)
+                            if a.__name__ not in ("NoneType",)
+                        ]
                         if len(args) == 1:
                             label = args[0].__name__
 
@@ -129,7 +136,7 @@ def describe_service(class_instance):
                         label = annotation.__name__
                 return label
 
-            def map_default(arg_props):
+            def map_default(arg_props: Any) -> Any:
                 default = arg_props.default
                 if default == inspect._empty:
                     required.append(arg_props.name)
@@ -137,23 +144,32 @@ def describe_service(class_instance):
                 else:
                     return default
 
-            def map_argument(arg_props):
-                return (arg_props.name, {
-                    "type": map_annotation(arg_props),
-                    "description": "",
-                    "default": map_default(arg_props),
-                })
+            def map_argument(arg_props: Any) -> Tuple[str, Dict[str, Any]]:
+                return (
+                    arg_props.name,
+                    {
+                        "type": map_annotation(arg_props),
+                        "description": "",
+                        "default": map_default(arg_props),
+                    },
+                )
 
-            properties = [map_argument(p) for n, p in method_signature.parameters.items() if n not in ("self", "cls", ctx_arg_name)]
+            properties = [
+                map_argument(p)
+                for n, p in method_signature.parameters.items()
+                if n not in ("self", "cls", ctx_arg_name)
+            ]
 
             method_spec = {
-                "description": getattr(method, "__nuropb_description__", inspect.getdoc(method)),
+                "description": getattr(
+                    method, "__nuropb_description__", inspect.getdoc(method)
+                ),
                 "requires_encryption": requires_encryption,
                 "parameters": {
                     "type": "object",
                     "properties": properties,
                     "required": required,
-                }
+                },
             }
             methods.append((name, method_spec))
 
@@ -168,11 +184,13 @@ def describe_service(class_instance):
         if service_has_encrypted_methods:
             private_key = service_name = getattr(class_instance, "_private_key", None)
             if private_key is None:
-                raise ValueError(f"Service {service_name} has encrypted methods but no private key has been set")
+                raise ValueError(
+                    f"Service {service_name} has encrypted methods but no private key has been set"
+                )
 
             service_info["public_key"] = private_key.public_key().public_bytes(
                 encoding=serialization.Encoding.PEM,
-                format=serialization.PublicFormat.SubjectPublicKeyInfo
+                format=serialization.PublicFormat.SubjectPublicKeyInfo,
             )
 
         return service_info
