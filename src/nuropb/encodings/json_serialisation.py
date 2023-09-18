@@ -35,6 +35,7 @@ def to_json_compatible(obj: Any, recursive: bool = True, max_depth: int = 4) -> 
             obj = obj.replace(tzinfo=datetime.timezone.utc)  # assume and set to UTC
         elif obj.tzinfo != datetime.timezone.utc:
             obj = obj.astimezone(datetime.timezone.utc)  # convert to UTC
+
         json_string = f"{obj.isoformat()}Z"
         return json_string
 

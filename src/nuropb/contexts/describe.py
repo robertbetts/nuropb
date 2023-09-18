@@ -71,9 +71,9 @@ def publish_to_mesh(
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             return method(*args, **kwargs)
 
-        setattr(wrapper, "__nuropb_mesh_hidden__",  hide_method)
+        setattr(wrapper, "__nuropb_mesh_hidden__", hide_method)
         setattr(wrapper, "__nuropb_context_token_key__", context_token_key)
-        setattr(wrapper, "__nuropb_authorise_func__",  authorise_func)
+        setattr(wrapper, "__nuropb_authorise_func__", authorise_func)
         setattr(wrapper, "__nuropb_requires_encryption__", requires_encryption)
         if description:
             setattr(wrapper, "__nuropb_description__", description)

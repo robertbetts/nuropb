@@ -79,7 +79,7 @@ def nuropb_context(
             return method(*args[1:], **kwargs)
 
         setattr(wrapper, "__nuropb_context__", True)
-        setattr(wrapper, "__nuropb_context_arg__",  context_parameter)
+        setattr(wrapper, "__nuropb_context_arg__", context_parameter)
         return wrapper
 
     if original_method:
