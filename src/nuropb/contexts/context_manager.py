@@ -9,7 +9,7 @@ _test_user_id_cache: Dict[str, Any] = {}
 
 
 class NuropbContextManager:
-    """ This class is a context manager that can be used to manage the context transaction relating
+    """This class is a context manager that can be used to manage the context transaction relating
     to an incoming nuropb service message. when a class instance method is decorated with the
     nuropb_context decorator, the context manager is instantiated and injected into the method
     as a ctx parameter.
@@ -21,6 +21,7 @@ class NuropbContextManager:
     transaction is considered to have failed. If any events were added to the context manager,
     they are discarded.
     """
+
     _suppress_exceptions: bool | None
     _nuropb_payload: Dict[str, Any] | None
     _context: Dict[str, Any]
@@ -31,10 +32,14 @@ class NuropbContextManager:
     _exc_tb: TracebackType | None
     _done: bool
 
-    def __init__(self, context: Dict[str, Any], suppress_exceptions: Optional[bool] = True):
+    def __init__(
+        self, context: Dict[str, Any], suppress_exceptions: Optional[bool] = True
+    ):
         if context is None:
             raise TypeError("context cannot be None")
-        self._suppress_exceptions = True if suppress_exceptions is None else suppress_exceptions
+        self._suppress_exceptions = (
+            True if suppress_exceptions is None else suppress_exceptions
+        )
         self._nuropb_payload = None
         self._context = context
         self._user_claims = None
@@ -73,7 +78,7 @@ class NuropbContextManager:
         }
 
     def add_event(self, event: Dict[str, Any]) -> None:
-        """ Add an event to the context manager. The event will be sent to the service mesh when
+        """Add an event to the context manager. The event will be sent to the service mesh when
         the context manager exits successfully.
 
         Event format:
@@ -89,12 +94,12 @@ class NuropbContextManager:
         self._events.append(event)
 
     def _handle_context_exit(
-            self,
-            exc_type: Type[BaseException] | None,
-            exc_value: BaseException | None,
-            exc_tb: TracebackType | None
+        self,
+        exc_type: Type[BaseException] | None,
+        exc_value: BaseException | None,
+        exc_tb: TracebackType | None,
     ) -> bool:
-        """ This method is for customising the behaviour when a context manager exits. It has the
+        """This method is for customising the behaviour when a context manager exits. It has the
         same signature as __exit__ or __aexit__.
 
         If an exception was raised while the context manager was running, the exception information
@@ -116,9 +121,9 @@ class NuropbContextManager:
     """ 
         **** Context Manager sync and async methods ****
     """
+
     def __enter__(self):
-        """ This method is called when entering a context manager with a with statement
-        """
+        """This method is called when entering a context manager with a with statement"""
         if self._done:
             raise RuntimeError("Context manager has already exited")
         return self
@@ -127,19 +132,17 @@ class NuropbContextManager:
         return self.__enter__()
 
     def __exit__(
-            self,
-            exc_type: Type[BaseException] | None,
-            exc_value: BaseException | None,
-            exc_tb: TracebackType | None
+        self,
+        exc_type: Type[BaseException] | None,
+        exc_value: BaseException | None,
+        exc_tb: TracebackType | None,
     ) -> bool | None:
         return self._handle_context_exit(exc_type, exc_value, exc_tb)
 
     async def __aexit__(
-            self,
-            exc_type: Type[BaseException] | None,
-            exc_value: BaseException | None,
-            exc_tb: TracebackType | None
+        self,
+        exc_type: Type[BaseException] | None,
+        exc_value: BaseException | None,
+        exc_tb: TracebackType | None,
     ) -> bool | None:
         return self.__exit__(exc_type, exc_value, exc_tb)
-
-

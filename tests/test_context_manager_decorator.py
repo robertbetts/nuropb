@@ -20,7 +20,9 @@ class TestServiceClass:
         return f"from {ctx['user_id']}, hello {param1}"
 
     @nuropb_context
-    def hello_with_context_decorator(self, ctx: NuropbContextManager, param1: str) -> str:
+    def hello_with_context_decorator(
+        self, ctx: NuropbContextManager, param1: str
+    ) -> str:
         _ = self
         return f"from {ctx.context['user_id']}, hello {param1}"
 
@@ -40,9 +42,9 @@ def instance():
 
 
 def test_declaring_decorator_on_class_method():
-    """ Using the decorator on a class method with no ctx parameter should raise a TypeError
-    """
+    """Using the decorator on a class method with no ctx parameter should raise a TypeError"""
     with pytest.raises(TypeError):
+
         class ServiceClass:
             _service_name: str
 
@@ -53,6 +55,7 @@ def test_declaring_decorator_on_class_method():
     """ the same test when specifying an alternate the ctx parameter name must also raise a TypeError
     """
     with pytest.raises(TypeError):
+
         class ServiceClass:
             _service_name: str
 
@@ -62,7 +65,6 @@ def test_declaring_decorator_on_class_method():
 
 
 def test_nuropb_with_context_and_decorator_no_injection(context, instance):
-
     params = {
         "param1": "world",
     }
@@ -71,13 +73,10 @@ def test_nuropb_with_context_and_decorator_no_injection(context, instance):
 
 
 def test_nuropb_context(context, instance):
-
     params = {
         "param1": "world",
     }
-    ctx = NuropbContextManager(
-        context=context
-    )
+    ctx = NuropbContextManager(context=context)
     with pytest.raises(TypeError):
         result = instance.hello_no_context(ctx, **params)
 
@@ -112,9 +111,6 @@ def test_nuropb_context_decorator(context, instance):
     result = instance.hello_with_context_decorator(ctx, **params)
     assert result == "from test_user_id, hello world"
 
-    ctx = NuropbContextManager(
-        context=context
-    )
+    ctx = NuropbContextManager(context=context)
     result = instance.hello_with_context_decorator(ctx, **params)
     assert result == "from test_user_id, hello world"
-

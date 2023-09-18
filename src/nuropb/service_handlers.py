@@ -17,6 +17,7 @@ from typing import Any, Tuple, List, Awaitable
 from tornado.concurrent import is_future
 import pika.spec
 
+from nuropb.contexts.decorators import method_has_nuropb_context
 from nuropb.interface import (
     ResponsePayloadDict,
     NuropbHandlingError,
@@ -189,7 +190,7 @@ def create_transport_responses_from_exceptions(
                     event_payload.update(
                         {
                             "topic": event["topic"],
-                            "event": event["payload"],
+                            "event": event["encoded_payload"],
                             "target": event["target"],
                         }
                     )
@@ -359,7 +360,7 @@ def execute_request(
             params = payload["params"]
 
             """ TODO: think about how to pass the context to the service executing the method
-            # context = payload["context"]
+            # context = encoded_payload["context"]
             """
 
             if (
@@ -375,7 +376,13 @@ def execute_request(
                 )
 
             try:
-                result = getattr(service_instance, method_name)(**params)
+                service_instance_method = getattr(service_instance, method_name)
+                if method_has_nuropb_context(service_instance_method):
+                    result = service_instance_method(
+                        service_message["nuropb_payload"]["context"], **params
+                    )
+                else:
+                    result = getattr(service_instance, method_name)(**params)
             except NuropbException as err:
                 if verbose:
                     logger.exception(err)

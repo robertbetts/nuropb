@@ -13,7 +13,8 @@ def authorise_token(token: str) -> Dict[str, Any]:
     _ = token
     return {
         "user_id": "test_user_id",
-        "expiry": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1),
+        "expiry": datetime.datetime.now(datetime.timezone.utc)
+        + datetime.timedelta(days=1),
         "scope": "openid profile",
         "roles": ["test_role1", "test_role2"],
     }
@@ -23,11 +24,13 @@ class AuthoriseServiceClass:
     _service_name: str
 
     @nuropb_context(authorise_key="Authorization", authorise_func=authorise_token)
-    def hello_requires_auth(self, ctx: NuropbContextManager, param1: str) -> Dict[str, Any]:
+    def hello_requires_auth(
+        self, ctx: NuropbContextManager, param1: str
+    ) -> Dict[str, Any]:
         _ = self
         claims = ctx.user_claims
         return {
-            "context": ctx.context['user_id'],
+            "context": ctx.context["user_id"],
             "claims": claims,
         }
 
@@ -47,8 +50,7 @@ def instance():
 
 
 def test_declaring_decorator_on_class_method(instance, context):
-    """ Using the decorator on a class method with no ctx parameter should raise a TypeError
-    """
+    """Using the decorator on a class method with no ctx parameter should raise a TypeError"""
     ctx = NuropbContextManager(context=context, suppress_exceptions=False)
 
     result = instance.hello_requires_auth(ctx, param1="test_param1")

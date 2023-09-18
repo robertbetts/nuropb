@@ -17,7 +17,8 @@ from nuropb.interface import (
     NUROPB_PROTOCOL_VERSION,
     CommandPayloadDict,
 )
-from nuropb.rmq_transport import RMQTransport, encode_payload
+from nuropb.rmq_transport import RMQTransport
+from nuropb.encodings.serializor import encode_payload
 from nuropb.service_handlers import execute_request, handle_execution_result
 
 logger = logging.getLogger(__name__)
@@ -331,7 +332,7 @@ class RMQAPI(NuropbInterface):
                     "error": {
                         "error": f"{type(e).__name__}",
                         "description": f"Error sending request message: {e}",
-                    }
+                    },
                 }
         response: PayloadDict | None = None
         try:

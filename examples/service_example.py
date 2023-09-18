@@ -39,7 +39,7 @@ class ServiceExample:
             events: List[EventType] = [
                 {
                     "topic": "test-event",
-                    "payload": {
+                    "encoded_payload": {
                         "event_key": "event_value",
                     },
                     "target": [],

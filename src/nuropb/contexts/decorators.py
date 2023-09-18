@@ -5,15 +5,23 @@ from functools import wraps
 from nuropb.contexts.context_manager import NuropbContextManager
 
 
+def method_has_nuropb_context(method: callable) -> bool:
+    """This function checks if a method has been decorated with @nuropb_context
+    :param method: callable
+    :return: bool
+    """
+    return getattr(method, "__nuropb_context__", False)
+
+
 def nuropb_context(
-        original_method=None,
-        *,
-        context_parameter: Optional[str] = "ctx",
-        suppress_exceptions: Optional[bool] = False,
-        authorise_key: Optional[str] = None,
-        authorise_func: Optional[callable] = None,
+    original_method=None,
+    *,
+    context_parameter: Optional[str] = "ctx",
+    suppress_exceptions: Optional[bool] = False,
+    authorise_key: Optional[str] = None,
+    authorise_func: Optional[callable] = None,
 ) -> Any:
-    """ This decorator function injects a NuropbContext instance into a method that has ctx:NuropbContext
+    """This decorator function injects a NuropbContext instance into a method that has ctx:NuropbContext
     as an argument. The ctx parameter of the decorated method is hidden from the method's signature visible
     on the service mesh.
 
@@ -43,8 +51,7 @@ def nuropb_context(
 
         @wraps(method)
         def wrapper(*args, **kwargs):
-            """ validate calling arguments
-            """
+            """validate calling arguments"""
             if len(args) < 2 or not isinstance(args[1], (NuropbContextManager, dict)):
                 raise TypeError(
                     f"The @nuropb_context, expects a {context_parameter}: NuropbContextManager "
@@ -63,10 +70,10 @@ def nuropb_context(
             kwargs[context_parameter] = ctx
             return method(*args[1:], **kwargs)
 
+        wrapper.__nuropb_context__ = True
         return wrapper
 
     if original_method:
         return decorator(original_method)
     else:
         return decorator
-

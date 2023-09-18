@@ -23,8 +23,7 @@ def ctx(context):
 
 
 def test_initialise_context_manager(context):
-    """ Test that we can initialise a context manager with a context dict
-    """
+    """Test that we can initialise a context manager with a context dict"""
     ctx = NuropbContextManager(context=context)
     assert ctx.context == context
     assert ctx.events == []
@@ -35,26 +34,22 @@ def test_initialise_context_manager(context):
 
 def test_cm_add_events(context):
     ctx = NuropbContextManager(context=context)
-    ctx.add_event({
-        "topic": "test_topic",
-        "event": "test_event_payload",
-        "context": context
-    })
+    ctx.add_event(
+        {"topic": "test_topic", "event": "test_event_payload", "context": context}
+    )
     compare_event = {
         "topic": "test_topic",
         "event": "test_event_payload",
-        "context": context
+        "context": context,
     }
     assert ctx.events == [compare_event]
 
 
 def test_cm_with_happy_path(ctx):
     with ctx as context:
-        context.add_event({
-            "topic": "test_topic",
-            "event": "test_event_payload",
-            "context": context
-        })
+        context.add_event(
+            {"topic": "test_topic", "event": "test_event_payload", "context": context}
+        )
     assert len(ctx.events) == 1
     assert ctx.error is None
 
@@ -81,5 +76,3 @@ async def test_cm_with_suppress_exception_false_async():
             1 / 0
     assert ctx.error["error"] == "ZeroDivisionError"
     assert ctx.error["description"] == "division by zero"
-
-

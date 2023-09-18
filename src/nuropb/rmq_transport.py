@@ -1,4 +1,3 @@
-import json
 import logging
 import functools
 from typing import List, Set, Optional, Any, Dict, Awaitable, cast, Literal, TypedDict
@@ -13,6 +12,7 @@ from pika.exceptions import ChannelClosedByBroker, ProbableAccessDeniedError
 import pika.spec
 from pika.frame import Method
 
+from nuropb.encodings.serializor import encode_payload, decode_payload
 from nuropb.interface import (
     PayloadDict,
     NuropbTransportError,
@@ -67,44 +67,6 @@ CONSUMER_CLOSED_WAIT_TIMEOUT = 10
 verbose = False
 """ Set to True to enable module verbose logging
 """
-
-
-def encode_payload(payload: PayloadDict, payload_type: str = "json") -> bytes:
-    """
-    :param payload:
-    :param payload_type:
-        Currently only support json
-    :return: a byte string encoded json from imputed message dict
-    """
-    if payload_type != "json":
-        raise ValueError(f"payload_type {payload_type} is not supported")
-
-    return json.dumps(payload).encode()
-
-
-def decode_payload(
-    payload: bytes,
-    payload_type: str = "json",
-    updates: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
-    """
-    :param payload:
-    :param payload_type:
-        Currently only support json
-    :param updates:
-        Optional dict to update the decoded payload with
-    :return: convert bytes to a Python Dict
-    """
-    if payload_type != "json":
-        raise ValueError(f"payload_type {payload_type} is not supported")
-
-    decoded_payload: Any = json.loads(payload)
-    if not isinstance(decoded_payload, dict):
-        raise ValueError(f"payload is not a dict: {decoded_payload}")
-    if updates is not None:
-        decoded_payload.update(updates)
-
-    return decoded_payload
 
 
 def decode_rmq_body(
