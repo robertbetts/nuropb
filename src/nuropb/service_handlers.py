@@ -17,7 +17,8 @@ from typing import Any, Tuple, List, Awaitable
 from tornado.concurrent import is_future
 import pika.spec
 
-from nuropb.contexts.decorators import method_has_nuropb_context
+from nuropb.contexts.context_manager_decorator import method_has_nuropb_context
+from nuropb.contexts.describe import describe_service
 from nuropb.interface import (
     ResponsePayloadDict,
     NuropbHandlingError,
@@ -363,26 +364,31 @@ def execute_request(
             # context = encoded_payload["context"]
             """
 
-            if (
-                method_name.startswith("_")
-                or not hasattr(service_instance, method_name)
-                or not callable(getattr(service_instance, method_name))
-            ):
-                raise NuropbHandlingError(
-                    description="Unknown method {}".format(method_name),
-                    lifecycle="service-handle",
-                    payload=payload,
-                    exception=None,
-                )
+            if method_name != "nuropb_describe":
+                if (
+                    method_name.startswith("_")
+                    or not hasattr(service_instance, method_name)
+                    or not callable(getattr(service_instance, method_name))
+                ):
+                    raise NuropbHandlingError(
+                        description="Unknown method {}".format(method_name),
+                        lifecycle="service-handle",
+                        payload=payload,
+                        exception=None,
+                    )
 
             try:
-                service_instance_method = getattr(service_instance, method_name)
-                if method_has_nuropb_context(service_instance_method):
-                    result = service_instance_method(
-                        service_message["nuropb_payload"]["context"], **params
-                    )
+                if method_name == "nuropb_describe":
+                    result = describe_service(service_instance)
                 else:
-                    result = getattr(service_instance, method_name)(**params)
+                    service_instance_method = getattr(service_instance, method_name)
+                    if method_has_nuropb_context(service_instance_method):
+                        result = service_instance_method(
+                            service_message["nuropb_payload"]["context"], **params
+                        )
+                    else:
+                        result = getattr(service_instance, method_name)(**params)
+
             except NuropbException as err:
                 if verbose:
                     logger.exception(err)

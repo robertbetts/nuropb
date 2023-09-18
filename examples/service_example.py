@@ -1,7 +1,9 @@
 import logging
 from typing import List
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.backends import default_backend
 
-
+from nuropb.contexts.describe import publish_to_mesh
 from nuropb.interface import NuropbException, NuropbSuccess, NuropbCallAgain, EventType
 
 
@@ -10,6 +12,9 @@ logger = logging.getLogger()
 
 class ServiceExample:
     _service_name: str
+    _private_key = rsa.generate_private_key(
+        public_exponent=65537, key_size=2048, backend=default_backend()
+    )
     _instance_id: str
     _method_call_count: int
 
@@ -30,6 +35,7 @@ class ServiceExample:
         _ = target, context, trace_id
         logger.debug(f"Received event {topic}:{event}")
 
+    @publish_to_mesh(requires_encryption=True)
     def test_method(self, **kwargs) -> str:
         self._method_call_count += 1
 

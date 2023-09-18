@@ -64,6 +64,8 @@ async def main():
     )
     await api.connect()
 
+    sanbox_describe = await api.describe_service("sandbox")
+
     total_seconds = 0
     total_sample_count = 0
 

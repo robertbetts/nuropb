@@ -18,8 +18,6 @@ def nuropb_context(
     *,
     context_parameter: Optional[str] = "ctx",
     suppress_exceptions: Optional[bool] = False,
-    authorise_key: Optional[str] = None,
-    authorise_func: Optional[callable] = None,
 ) -> Any:
     """This decorator function injects a NuropbContext instance into a method that has ctx:NuropbContext
     as an argument. The ctx parameter of the decorated method is hidden from the method's signature visible
@@ -33,11 +31,17 @@ def nuropb_context(
     *NOTE* This decorator is only for with class methods, using with functions will have unexpected
     results and is likely to raise a TypeException
 
+    As illustrated by the example below, @nuropb_context must always be on top of @publish_to_mesh when
+    both decorators are used.
+
+        @nuropb_context
+        @publish_to_mesh(context_token_key="Authorization", authorise_func=authorise_token)
+        def hello_requires_auth(...)
+
+
     :param original_method: the method to be decorated
     :param context_parameter: str
     :param suppress_exceptions: bool
-    :param authorise_key: str
-    :param authorise_func: callable(token: str) -> dict
     :return: a decorated method
     """
     context_parameter = "ctx" if context_parameter is None else context_parameter
@@ -65,12 +69,18 @@ def nuropb_context(
                     context=context,
                     suppress_exceptions=suppress_exceptions,
                 )
-            if authorise_key is not None and authorise_func is not None:
-                ctx.user_claims = authorise_func(ctx.context[authorise_key])
+
+            authorise_func = getattr(wrapper, "__nuropb_authorise_func__", None)
+            if authorise_func is not None:
+                context_token_key = getattr(wrapper, "__nuropb_context_token_key__")
+                ctx.user_claims = authorise_func(ctx.context[context_token_key])
+
             kwargs[context_parameter] = ctx
             return method(*args[1:], **kwargs)
 
+
         wrapper.__nuropb_context__ = True
+        wrapper.__nuropb_context_arg__ = "ctx"
         return wrapper
 
     if original_method:

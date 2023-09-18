@@ -30,6 +30,7 @@ class NuropbContextManager:
     _exc_type: Type[BaseException] | None
     _exec_value: BaseException | None
     _exc_tb: TracebackType | None
+    _started: bool
     _done: bool
 
     def __init__(
@@ -48,6 +49,7 @@ class NuropbContextManager:
         self._exc_type = None
         self._exec_value = None
         self._exc_tb = None
+        self._started = False
         self._done = False
 
     @property
@@ -126,6 +128,10 @@ class NuropbContextManager:
         """This method is called when entering a context manager with a with statement"""
         if self._done:
             raise RuntimeError("Context manager has already exited")
+        if self._started:
+            raise RuntimeError("Context manager has already entered")
+        self._started = True
+
         return self
 
     async def __aenter__(self):

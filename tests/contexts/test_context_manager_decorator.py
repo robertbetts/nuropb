@@ -3,7 +3,7 @@ import pytest
 from typing import Dict, Any
 
 from nuropb.contexts.context_manager import NuropbContextManager
-from nuropb.contexts.decorators import nuropb_context
+from nuropb.contexts.context_manager_decorator import nuropb_context
 
 logger = logging.getLogger(__name__)
 

@@ -1,6 +1,6 @@
 # NuroPb
 
-## A Distributed Event Driven Service Mesh
+## The neural plumbing for an Asynchronous, Distributed, Event Driven Service Mesh
 
 [![codecov](https://codecov.io/gh/robertbetts/nuropb/branch/main/graph/badge.svg?token=DVSBZY794D)](https://codecov.io/gh/robertbetts/nuropb)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)

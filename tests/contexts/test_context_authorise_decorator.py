@@ -4,7 +4,8 @@ from typing import Dict, Any
 import datetime
 
 from nuropb.contexts.context_manager import NuropbContextManager
-from nuropb.contexts.decorators import nuropb_context
+from nuropb.contexts.context_manager_decorator import nuropb_context
+from nuropb.contexts.describe import publish_to_mesh
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,8 @@ def authorise_token(token: str) -> Dict[str, Any]:
 class AuthoriseServiceClass:
     _service_name: str
 
-    @nuropb_context(authorise_key="Authorization", authorise_func=authorise_token)
+    @nuropb_context
+    @publish_to_mesh(context_token_key="Authorization", authorise_func=authorise_token)
     def hello_requires_auth(
         self, ctx: NuropbContextManager, param1: str
     ) -> Dict[str, Any]:

@@ -2,6 +2,8 @@ import logging
 from typing import Dict, Optional, Any, Union, cast
 from uuid import uuid4
 from asyncio import Future
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.backends import default_backend
 
 from nuropb.interface import (
     NuropbInterface,
@@ -37,6 +39,8 @@ class RMQAPI(NuropbInterface):
     _service_instance: object | None
     _default_ttl: int
     _client_only: bool
+    _service_discovery: Dict[str, Any]
+    _service_public_keys: Dict[str, Any]
 
     def __init__(
         self,
@@ -69,6 +73,13 @@ class RMQAPI(NuropbInterface):
             self._connection_name = f"{vhost}-{service_name}-{instance_id}"
 
         self._service_name = service_name
+
+        self._service_discovery = {}
+        """ A dictionary of service_name: service_info
+        """
+        self._service_public_keys = {}
+        """ A dictionary of service_name: public_key
+        """
 
         if not self._client_only and service_instance is None:
             raise ValueError(
@@ -274,6 +285,10 @@ class RMQAPI(NuropbInterface):
         --------
             ResponsePayloadDict | Any: representing the response from the requested service with any exceptions raised
         """
+        if method != "nuropb_describe":
+            service_public_key = await self.check_method_for_encryption(service, method)
+        else:
+            service_public_key = None
 
         correlation_id = uuid4().hex
         ttl = self._default_ttl if ttl is None else ttl
@@ -515,3 +530,49 @@ class RMQAPI(NuropbInterface):
             properties=properties,
             mandatory=False,
         )
+
+    async def describe_service(self, service_name):
+        """describe_service: returns the service description for the given service_name
+        :param service_name: str
+        :return: dict
+        """
+        result = await self.request(
+            service=service_name,
+            method="nuropb_describe",
+            params={},
+            context={},
+            ttl=60 * 1000,  # 1 minute
+            trace_id=uuid4().hex,
+        )
+        return result
+
+    async def check_method_for_encryption(self, service_name: str, method_name: str):
+        """check_method_for_encryption: Queries the service discovery cache, if an entry for the service_name
+        does not exist, then the service discovery is queried directly.
+
+        if encryption is required for the method called, then reference the service discovery cache
+        for the service private key required to encrypt the request.
+
+        :param service_name: str
+        :param method_name: str
+        :return: bool
+        """
+        if service_name not in self._service_discovery:
+            self._service_discovery[service_name] = await self.describe_service(service_name)
+            text_public_key = self._service_discovery[service_name].get("public_key", None)
+            if text_public_key:
+                self._service_public_keys[service_name] = serialization.load_pem_public_key(
+                    data=text_public_key,
+                    backend=default_backend(),
+                )
+
+        service_info = self._service_discovery[service_name]
+        method_info = service_info["methods"].get(method_name, None)
+        if method_info is None:
+            raise ValueError(f"Method {method_name} not found on service {service_name}")
+        if method_info.get("requires_encryption", False):
+            return self._service_public_keys.get(service_name, None)
+
+
+
+

@@ -1,3 +1,6 @@
+""" This module provides entire nuropb package with json serialisation logic and features
+# TODO: Re-check the serialised datetime, date, time and timedelta formats. Look for standards.
+"""
 from typing import Any, Dict, Optional
 import json
 import datetime
@@ -8,6 +11,13 @@ import dataclasses
 def to_json_compatible(obj: Any, recursive: bool = True, max_depth: int = 4) -> Any:
     """Returns a json compatible value for obj, if obj is not a native json type, then
     return a string representation.
+
+    *NOTE 1* This function must be kept in step with the custom json encoder,
+    NuropbEncoder, below. Next, read NOTE 2.
+
+    *NOTE 2* This function does not exactly follow the structure of the custom json encoder,
+    NuropbEncoder, below. Difference is that the json library implements its own object
+    traversal logic. In this function it's required to be done explicitly.
 
     datetime.datetime: isoformat() + "Z". if there's timezone info, the datetime is
         converted to utc. if there is no timezone info, the datetime is assumed to be utc.
@@ -40,8 +50,8 @@ def to_json_compatible(obj: Any, recursive: bool = True, max_depth: int = 4) -> 
         return "{0:f}".format(obj)
 
     if dataclasses.is_dataclass(obj):
-        dataclass_dict = dataclasses.asdict(obj)
-        return dataclass_dict
+        v = dataclasses.asdict(obj)
+        return to_json_compatible(v, recursive=recursive, max_depth=max_depth - 1)
 
     if isinstance(obj, dict) and recursive:
         return {
@@ -65,6 +75,14 @@ def to_json_compatible(obj: Any, recursive: bool = True, max_depth: int = 4) -> 
 
 
 class NuropbEncoder(json.JSONEncoder):
+    """
+    *NOTE 1* This class must be kept in step with the function to_json_compatible, above.
+    Next, read NOTE 2.
+
+    *NOTE 2* This class does not exactly follow the structure of the function,
+    to_json_compatible, above. Difference is that the json library implements its own
+    object traversal logic. In the function it's required to be done explicitly.
+    """
     def default(self, obj):
         if isinstance(obj, datetime.datetime):
             json_string = f"{obj.isoformat()}Z"

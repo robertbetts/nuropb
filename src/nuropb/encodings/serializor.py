@@ -58,5 +58,4 @@ def decode_payload(
         raise ValueError(
             f"Decoded payload is not a dictionary: {type(payload).__name__}"
         )
-
     return payload
