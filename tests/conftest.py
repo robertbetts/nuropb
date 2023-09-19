@@ -6,6 +6,7 @@ import os
 
 import pytest
 
+from nuropb.rmq_api import RMQAPI
 from nuropb.rmq_lib import (
     build_amqp_url,
     build_rmq_api_url,
@@ -184,3 +185,45 @@ def service_instance():
         service_name="test_service",
         instance_id=uuid4().hex,
     )
+
+
+@pytest.fixture(scope="function")
+def test_mesh_service(test_settings, test_rmq_url, service_instance):
+    service_name = test_settings["service_name"]
+    instance_id = uuid4().hex
+    transport_settings = dict(
+        dl_exchange=test_settings["dl_exchange"],
+        rpc_bindings=test_settings["rpc_bindings"],
+        event_bindings=test_settings["event_bindings"],
+        prefetch_count=test_settings["prefetch_count"],
+        default_ttl=test_settings["default_ttl"],
+    )
+    service_api = RMQAPI(
+        service_name=service_name,
+        instance_id=instance_id,
+        service_instance=service_instance,
+        amqp_url=test_rmq_url,
+        rpc_exchange="test_rpc_exchange",
+        events_exchange="test_events_exchange",
+        transport_settings=transport_settings,
+    )
+    yield service_api
+
+
+@pytest.fixture(scope="function")
+def test_mesh_client(test_rmq_url, test_settings, test_mesh_service):
+    instance_id = uuid4().hex
+    settings = test_mesh_service.transport.rmq_configuration
+    client_transport_settings = dict(
+        dl_exchange=settings["dl_exchange"],
+        prefetch_count=test_settings["prefetch_count"],
+        default_ttl=test_settings["default_ttl"],
+    )
+    client_api = RMQAPI(
+        instance_id=instance_id,
+        amqp_url=test_rmq_url,
+        rpc_exchange=settings["rpc_exchange"],
+        events_exchange=settings["events_exchange"],
+        transport_settings=client_transport_settings,
+    )
+    yield client_api

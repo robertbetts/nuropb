@@ -26,7 +26,6 @@ def test_sync_handler_call(service_instance):
         "service": "test_service",
         "method": "test_method",
         "params": {"param1": "value1"},
-        "reply_to": "",
     }
     transport_request = TransportServicePayload(
         nuropb_protocol=NUROPB_PROTOCOL_VERSION,
@@ -57,7 +56,6 @@ async def test_async_handler_call_step_one(service_instance):
         "service": "test_service",
         "method": "test_async_method",
         "params": {"param1": "value1"},
-        "reply_to": "",
     }
     transport_request = TransportServicePayload(
         nuropb_protocol=NUROPB_PROTOCOL_VERSION,

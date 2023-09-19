@@ -42,7 +42,6 @@ async def test_request_response_pass(test_settings, test_rmq_url, service_instan
             context=context,
             ttl=ttl,
             trace_id=trace_id,
-            rpc_response=False,
         )
     await client_api.disconnect()
     assert client_api.connected is False

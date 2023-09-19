@@ -11,11 +11,13 @@ logger = logging.getLogger("client")
 
 async def make_request(api: RMQAPI):
     service = "sandbox"
-    method = "test_method"
+    # method = "test_method"
+    method = "test_encrypt_method"
     params = {"param1": "value1"}
     context = {"context1": "value1"}
     ttl = 60 * 30 * 1000
     trace_id = uuid4().hex
+    encrypted = await api.requires_encryption(service, method)
     response = await api.request(
         service=service,
         method=method,
@@ -23,6 +25,7 @@ async def make_request(api: RMQAPI):
         context=context,
         ttl=ttl,
         trace_id=trace_id,
+        encrypted=encrypted,
     )
     return response == f"response from {service}.{method}"
 
@@ -34,6 +37,7 @@ async def make_command(api: RMQAPI):
     context = {"context1": "value1"}
     ttl = 60 * 30 * 1000
     trace_id = uuid4().hex
+    encrypted = await api.requires_encryption(service, method)
     api.command(
         service=service,
         method=method,
@@ -41,6 +45,7 @@ async def make_command(api: RMQAPI):
         context=context,
         ttl=ttl,
         trace_id=trace_id,
+        encrypted=encrypted,
     )
 
 
@@ -61,15 +66,23 @@ async def main():
     amqp_url = "amqp://guest:guest@127.0.0.1:5672/sandbox"
     api = RMQAPI(
         amqp_url=amqp_url,
+        transport_settings={
+            "prefetch_count": 1,
+        }
     )
     await api.connect()
 
     total_seconds = 0
     total_sample_count = 0
 
-    batch_size = 500
+    batch_size = 10000
     number_of_batches = 5
     ioloop = asyncio.get_event_loop()
+
+    service = "sandbox"
+    method = "test_method"
+    encrypted = await api.requires_encryption(service, method)
+    logger.info(f"encryption is : {encrypted}")
 
     for _ in range(number_of_batches):
         start_time = datetime.datetime.utcnow()
@@ -82,15 +95,15 @@ async def main():
         loop_batch_size += batch_size
         # logger.info(f"Request complete: {result[0]}")
 
-        tasks = [ioloop.create_task(make_command(api)) for _ in range(batch_size)]
-        logger.info("Waiting for command tasks to complete")
-        await asyncio.wait(tasks)
-        loop_batch_size += batch_size
+        # tasks = [ioloop.create_task(make_command(api)) for _ in range(batch_size)]
+        # logger.info("Waiting for command tasks to complete")
+        # await asyncio.wait(tasks)
+        # loop_batch_size += batch_size
 
-        tasks = [ioloop.create_task(publish_event(api)) for _ in range(batch_size)]
-        logger.info("Waiting for publish tasks to complete")
-        await asyncio.wait(tasks)
-        loop_batch_size += batch_size
+        # tasks = [ioloop.create_task(publish_event(api)) for _ in range(batch_size)]
+        # logger.info("Waiting for publish tasks to complete")
+        # await asyncio.wait(tasks)
+        # loop_batch_size += batch_size
 
         end_time = datetime.datetime.utcnow()
         time_taken = end_time - start_time
@@ -104,8 +117,8 @@ async def main():
         total_seconds,
         total_sample_count / total_seconds,
     )
-    fut = asyncio.Future()
-    await fut
+    # fut = asyncio.Future()
+    # await fut
     logging.info("Client Done")
 
 

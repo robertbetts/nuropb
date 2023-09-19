@@ -1,13 +1,14 @@
 import logging
 from typing import Dict, Optional, Any, Union, cast
 from uuid import uuid4
-import asyncio
 from asyncio import Future
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.backends import default_backend
 
+from nuropb.encodings.encryption import Encryptor
 from nuropb.interface import (
     NuropbInterface,
     NuropbMessageError,
-    PayloadDict,
     ResponsePayloadDict,
     RequestPayloadDict,
     EventPayloadDict,
@@ -15,10 +16,10 @@ from nuropb.interface import (
     ResultFutureResponsePayload,
     TransportServicePayload,
     MessageCompleteFunction,
-    NUROPB_PROTOCOL_VERSION,
     CommandPayloadDict,
+    NuropbException,
 )
-from nuropb.rmq_transport import RMQTransport, encode_payload
+from nuropb.rmq_transport import RMQTransport
 from nuropb.service_handlers import execute_request, handle_execution_result
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,9 @@ class RMQAPI(NuropbInterface):
     _service_instance: object | None
     _default_ttl: int
     _client_only: bool
+    _encryptor: Encryptor
+    _service_discovery: Dict[str, Any]
+    _service_public_keys: Dict[str, Any]
 
     def __init__(
         self,
@@ -61,29 +65,49 @@ class RMQAPI(NuropbInterface):
         self._instance_id = instance_id if instance_id is not None else uuid4().hex
 
         if service_name is None:
+            """Configure for client only mode"""
             self._client_only = True
             self._connection_name = f"{vhost}-client-{instance_id}"
             service_name = f"{vhost}-client"
+            self._encryptor = Encryptor()
         else:
+            """Configure for service mode"""
             self._client_only = False
             self._connection_name = f"{vhost}-{service_name}-{instance_id}"
+            self._encryptor = Encryptor(
+                service_name=service_name,
+                private_key=getattr(service_instance, "_private_key", None),
+            )
 
         self._service_name = service_name
+        """ Is also a label for the api whether in client or service mode.
+        """
+
+        self._service_discovery = {}
+        """ A dictionary of service_name: service mesh discovered service_info
+        """
+        self._service_public_keys = {}
+        """ A dictionary of service_name: public_key for when encryption is required
+        """
 
         if not self._client_only and service_instance is None:
             raise ValueError(
                 "A service instance must be provided when starting in service mode"
             )  # pragma: no cover
         self._service_instance = service_instance
+        """ the class instance that will be shared on the service mesh
+        """
 
         transport_settings = {} if transport_settings is None else transport_settings
         if self._client_only:
             transport_settings["client_only"] = True
 
-        default_ttl = transport_settings.get("default_ttl", None)
-
         self._response_futures = {}
+
+        default_ttl = transport_settings.get("default_ttl", None)
         self._default_ttl = 60 * 60 * 1000 if default_ttl is None else default_ttl
+        """ default time to live or timeout service mesh interaction
+        """
 
         self._api_connected = False
 
@@ -100,6 +124,7 @@ class RMQAPI(NuropbInterface):
                 "message_callback": self.receive_transport_message,
                 "rpc_exchange": rpc_exchange,
                 "events_exchange": events_exchange,
+                "encryptor": self._encryptor,
             }
         )
         self._transport = RMQTransport(**transport_settings)
@@ -140,8 +165,6 @@ class RMQAPI(NuropbInterface):
         """
         if not self.connected:
             await self._transport.start()
-            # task = asyncio.create_task(self.keep_loop_active())
-            # task.add_done_callback(lambda _: None)
         else:
             logger.warning("Already connected")
 
@@ -157,9 +180,8 @@ class RMQAPI(NuropbInterface):
         message_complete_callback: MessageCompleteFunction,
         metadata: Dict[str, Any],
     ) -> None:
-        """receive_transport_message: handles a messages received from the transport layer
-            for processing by the service instance. Both incoming service messages and response
-            messages pass through this method.
+        """receive_transport_message: handles a messages received from the transport layer. Both
+         incoming service messages and response messages pass through this method.
 
         :return: None
         """
@@ -201,7 +223,6 @@ class RMQAPI(NuropbInterface):
             logger.warning(error_description)
             response = NuropbHandlingError(
                 description=error_description,
-                lifecycle="service-handle",
                 payload=service_message["nuropb_payload"],
             )
             handle_execution_result(service_message, response, MessageCompleteFunction)
@@ -228,67 +249,39 @@ class RMQAPI(NuropbInterface):
         ttl: Optional[int] = None,
         trace_id: Optional[str] = None,
         rpc_response: bool = True,
+        encrypted: bool = False,
     ) -> Union[ResponsePayloadDict, Any]:
-        """Make a request for a method on service and wait until the response is received. The
-            request message uses the 'message expiry' configured on the underlying transport.
+        """Makes a rpc request for a method on a service mesh service and waits until the response is
+        received.
 
-            expiry is the time in milliseconds that the message will be kept on the queue before being moved
-            to the dead letter queue. If None, then the message expiry configured on the transport is used.
-
-            # TODO: Look into returning a dead letter exception for timeout or other errors that result
-                in the message being returned to dead letter queue.
-
-        Parameters:
-        ----------
-        service: str
-            The routing key on the rpc exchange to direct the request to the desired service request queue.
-
-        method: str
-            The name of the api call / method on the service
-
-        params: dict
-            The method input parameters
-
-        context: dict
+        :param service: str, The routing key on the rpc exchange to direct the request to the desired
+            service request queue.
+        :param method: str, the name of the api call / method on the service
+        :param params: dict, The method input parameters
+        :param context: dict
             The context of the request. This is used to pass information to the service manager
             and is not used by the transport. Example content includes:
                 - user_id: str  # a unique user identifier or token of the user that made the request
                 - correlation_id: str  # a unique identifier of the request used to correlate the response to the
-                                       # request or trace the request over the network (e.g. a uuid4 hex string)
+                                       # request or trace the request over the network (e.g. uuid4 hex string)
                 - service: str
                 - method: str
-
-        ttl: int optional
+        :param ttl: int optional
             expiry is the time in milliseconds that the message will be kept on the queue before being moved
             to the dead letter queue. If None, then the message expiry configured on the transport is used.
-
-        trace_id: str optional
-            an identifier to trace the request over the network (e.g. a uuid4 hex string)
-
-        rpc_response: bool optional
-            if True (default), the actual response of the RPC call is returned and where there was an error
-            during the lifecycle, this is raised as an exception.
+        :param trace_id: str optional
+            an identifier to trace the request over the network (e.g. uuid4 hex string)
+        :param rpc_response: bool optional
+            if True (default), the actual response of the RPC call is returned and where there was an error,
+            that is raised as an exception.
             Where rpc_response is a ResponsePayloadDict, is returned.
-
-        Returns:
-        --------
-            ResponsePayloadDict | Any: representing the response from the requested service with any exceptions raised
+        :param encrypted: bool
+            if True then the message will be encrypted in transit
+        :return ResponsePayloadDict | Any: representing the response from the requested service with any
+            exceptions raised
         """
-
         correlation_id = uuid4().hex
         ttl = self._default_ttl if ttl is None else ttl
-        properties = dict(
-            content_type="application/json",
-            correlation_id=correlation_id,
-            reply_to=self._transport.response_queue,
-            headers={
-                "nuropb_protocol": NUROPB_PROTOCOL_VERSION,
-                "nuropb_type": "request",
-                "trace_id": trace_id,
-            },
-            expiration=f"{ttl}",
-        )
-        context["rmq_correlation_id"] = correlation_id
         message: RequestPayloadDict = {
             "tag": "request",
             "service": service,
@@ -297,11 +290,7 @@ class RMQAPI(NuropbInterface):
             "correlation_id": correlation_id,
             "context": context,
             "trace_id": trace_id,
-            "reply_to": self._transport.response_queue,
         }
-        body = encode_payload(message, "json")
-        routing_key = service
-
         response_future: ResultFutureResponsePayload = Future()
         self._response_futures[correlation_id] = response_future
 
@@ -310,54 +299,63 @@ class RMQAPI(NuropbInterface):
             f"Sending request message:\n"
             f"correlation_id: {correlation_id}\n"
             f"trace_id: {trace_id}\n"
-            f"exchange: {self._transport.rpc_exchange}\n"
-            f"routing_key: {routing_key}\n"
             f"service: {service}\n"
             f"method: {method}\n"
         )
-        self._transport.send_message(
-            exchange=self._transport.rpc_exchange,
-            routing_key=routing_key,
-            body=body,
-            properties=properties,
-            mandatory=True,
-        )
-        response: PayloadDict | None = None
+        try:
+            self._transport.send_message(
+                payload=message,
+                expiry=ttl,
+                priority=None,
+                encoding="json",
+                encrypted=encrypted,
+            )
+        except Exception as err:
+            if rpc_response is False:
+                return {
+                    "tag": "response",
+                    "context": context,
+                    "correlation_id": correlation_id,
+                    "trace_id": trace_id,
+                    "result": None,
+                    "error": {
+                        "error": f"{type(err).__name__}",
+                        "description": f"Error sending request message: {err}",
+                    },
+                }
+            else:
+                raise err
+
         try:
             response = await response_future
-        except Exception as err:
-            error_message = (
-                f"Error while waiting for response to complete."
-                f"correlation_id: {correlation_id}, trace_id: {trace_id}, error:{err}"
-            )
-            logger.exception(error_message)
-            raise NuropbMessageError(
-                description=error_message,
-                lifecycle="client-handle",
-                payload=response,
-                exception=err,
-            )
-
-        if response["tag"] != "response":
-            """This logic condition is prevented in the transport layer"""
-            raise NuropbMessageError(
-                description=f"Unexpected response message type: {response['tag']}",
-                lifecycle="client-handle",
-                payload=response,
-                exception=None,
-            )
-
-        if not rpc_response:
-            return response
-        elif response["error"]:
-            raise NuropbMessageError(
-                description=f"RPC service error: {response['error']}",
-                lifecycle="client-handle",
-                payload=response,
-                exception=None,
-            )
-        else:
-            return response["result"]
+            if rpc_response is True and response["error"] is not None:
+                raise NuropbMessageError(
+                    description=response["error"]["description"],
+                    payload=response,
+                )
+            elif rpc_response is True:
+                return response["result"]
+            else:
+                return response
+        except BaseException as err:
+            if rpc_response is True:
+                raise err
+            else:
+                if not isinstance(err, NuropbException):
+                    error = {
+                        "error": f"{type(err).__name__}",
+                        "description": f"Error waiting for response: {err}",
+                    }
+                else:
+                    error = err.to_dict()
+                return {
+                    "tag": "response",
+                    "context": context,
+                    "correlation_id": correlation_id,
+                    "trace_id": trace_id,
+                    "result": None,
+                    "error": error,
+                }
 
     def command(
         self,
@@ -365,44 +363,28 @@ class RMQAPI(NuropbInterface):
         method: str,
         params: Dict[str, Any],
         context: Dict[str, Any],
-        wait_for_ack: bool = False,
         ttl: Optional[int] = None,
         trace_id: Optional[str] = None,
+        encrypted: bool = False,
     ) -> None:
-        """command: sends a command to the target service. It is up to the implementation to manage message
-        idempotency and message delivery guarantees.
-
-        any response from the target service is ignored.
+        """command: sends a command to the target service. I.e. a targeted event. response is not expected
+        and ignored.
 
         :param service: the service name
         :param method: the method name
         :param params: the method arguments, these must be easily serializable to JSON
         :param context: additional information that represent the context in which the request is executed.
                         The must be easily serializable to JSON.
-        :param wait_for_ack: if True, the command will wait for an acknowledgement from the transport layer that the
-        target has received the command. If False, the request will return immediately after the request is
-        delivered to the transport layer.
         :param ttl: the time to live of the request in milliseconds. After this time and dependent on the
                     underlying transport, it will not be consumed by the target
                     or
                     assumed by the requester to have failed with an undetermined state.
         :param trace_id: an identifier to trace the request over the network (e.g. uuid4 hex string)
-
+        :param encrypted: bool, if True then the message will be encrypted in transit
         :return: None
         """
         correlation_id = uuid4().hex
         ttl = self._default_ttl if ttl is None else ttl
-        properties = dict(
-            content_type="application/json",
-            correlation_id=correlation_id,
-            headers={
-                "nuropb_protocol": NUROPB_PROTOCOL_VERSION,
-                "nuropb_type": "command",
-                "trace_id": trace_id,
-            },
-            expiration=f"{ttl}",
-        )
-        context["rmq_correlation_id"] = correlation_id
         message: CommandPayloadDict = {
             "tag": "command",
             "service": service,
@@ -412,25 +394,21 @@ class RMQAPI(NuropbInterface):
             "context": context,
             "trace_id": trace_id,
         }
-        body = encode_payload(message, "json")
-        routing_key = service
 
         # mandatory means that if it doesn't get routed to a queue then it will be returned vi self._on_message_returned
         logger.debug(
             f"Sending command message:\n"
             f"correlation_id: {correlation_id}\n"
             f"trace_id: {trace_id}\n"
-            f"exchange: {self._transport.rpc_exchange}\n"
-            f"routing_key: {routing_key}\n"
             f"service: {service}\n"
             f"method: {method}\n"
         )
         self._transport.send_message(
-            exchange=self._transport.rpc_exchange,
-            routing_key=routing_key,
-            body=body,
-            properties=properties,
-            mandatory=True,
+            payload=message,
+            expiry=ttl,
+            priority=None,
+            encoding="json",
+            encrypted=encrypted,
         )
 
     def publish_event(
@@ -439,45 +417,24 @@ class RMQAPI(NuropbInterface):
         event: Dict[str, Any],
         context: Dict[str, Any],
         trace_id: Optional[str] = None,
+        encrypted: bool = False,
     ) -> None:
-        """Broadcasts an event with the given 'topic'.
+        """Broadcasts an event with the given topic.
 
-        Parameters:
-        ----------
-        topic: str
-            The routing key on the events exchange
-
-        event: json-encodable Python Dict.
-
-        context: dict
-            The context around gent generation, example content includes:
+        :param topic: str, The routing key on the events exchange
+        :param event: json-encodable Python Dict.
+        :param context: dict, The context around gent generation, example content includes:
                 - user_id: str  # a unique user identifier or token of the user that made the request
                 - correlation_id: str  # a unique identifier of the request used to correlate the response
                                        # to the request
                                        # or trace the request over the network (e.g. an uuid4 hex string)
                 - service: str
                 - method: str
-
-        ttl: int optional
-            expiry is the time in milliseconds that the message will be kept on the queue before being moved
-            to the dead letter queue. If None, then the message expiry configured on the transport is used.
-            defaulted to 0 (no expiry) for events
-
-        trace_id: str optional
+        :param trace_id: str optional
             an identifier to trace the request over the network (e.g. an uuid4 hex string)
-
+        :param encrypted: bool, if True then the message will be encrypted in transit
         """
         correlation_id = uuid4().hex
-        properties = dict(
-            content_type="application/json",
-            correlation_id=correlation_id,
-            headers={
-                "nuropb_protocol": NUROPB_PROTOCOL_VERSION,
-                "nuropb_type": "event",
-                "trace_id": trace_id,
-            },
-        )
-        context["rmq_correlation_id"] = correlation_id
         message: EventPayloadDict = {
             "tag": "event",
             "topic": topic,
@@ -487,19 +444,73 @@ class RMQAPI(NuropbInterface):
             "correlation_id": correlation_id,
             "target": None,
         }
-        body = encode_payload(message, "json")
-        routing_key = topic
         logger.debug(
-            "Sending event message: (%s - %s) (%s - %s)",
+            "Sending event message: (%s - %s)",
             correlation_id,
             trace_id,
-            self._transport.events_exchange,
-            routing_key,
         )
         self._transport.send_message(
-            exchange=self._transport.events_exchange,
-            routing_key=routing_key,
-            body=body,
-            properties=properties,
-            mandatory=False,
+            payload=message,
+            priority=None,
+            encoding="json",
+            encrypted=encrypted,
         )
+
+    async def describe_service(
+        self, service_name: str, refresh: bool = False
+    ) -> Dict[str, Any] | None:
+        """describe_service: returns the service information for the given service_name,
+        if it is not already cached or refresh is try then the service discovery is queried directly.
+
+        :param service_name: str
+        :param refresh: bool
+        :return: dict
+        """
+        if service_name in self._service_discovery or refresh:
+            return self._service_discovery[service_name]
+
+        service_info = await self.request(
+            service=service_name,
+            method="nuropb_describe",
+            params={},
+            context={},
+            ttl=60 * 1000,  # 1 minute
+            trace_id=uuid4().hex,
+        )
+        if not isinstance(service_info, dict):
+            raise ValueError(
+                f"Invalid service_info returned for service {service_name}"
+            )
+        else:
+            self._service_discovery[service_name] = service_info
+            try:
+                text_public_key = service_info.get("public_key", None)
+                if text_public_key:
+                    public_key = serialization.load_pem_public_key(
+                        data=text_public_key.encode("ascii"),
+                        backend=default_backend(),
+                    )
+                    self._encryptor.add_service_public_key(
+                        service_name=service_name, public_key=public_key
+                    )
+            except Exception as err:
+                logger.error(f"error loading the public key for {service_name}: {err}")
+            finally:
+                return service_info
+
+    async def requires_encryption(self, service_name: str, method_name: str) -> bool:
+        """requires_encryption: Queries the service discovery information for the service_name
+        and returns True if encryption is required else False.
+        none of encryption is not required.
+
+        :param service_name: str
+        :param method_name: str
+        :return: bool
+        """
+        service_info = await self.describe_service(service_name)
+        method_info = service_info["methods"].get(method_name, None)
+        if method_info is None:
+            raise ValueError(
+                f"Method {method_name} not found on service {service_name}"
+            )
+        return method_info.get("requires_encryption", False)
