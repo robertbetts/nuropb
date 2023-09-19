@@ -13,6 +13,7 @@ from pika.exceptions import ChannelClosedByBroker, ProbableAccessDeniedError
 import pika.spec
 from pika.frame import Method
 
+from nuropb.encodings.encryption import Encryptor
 from nuropb.encodings.serializor import encode_payload, decode_payload
 from nuropb.interface import (
     NuropbTransportError,
@@ -32,9 +33,10 @@ from nuropb.rmq_lib import (
     create_virtual_host,
     configure_nuropb_rmq,
 )
+from nuropb import service_handlers
 from nuropb.service_handlers import (
     create_transport_response_from_rmq_decode_exception,
-    error_dict_from_exception,
+    error_dict_from_exception
 )
 from nuropb.utils import obfuscate_credentials
 
@@ -63,7 +65,15 @@ CONSUMER_CLOSED_WAIT_TIMEOUT = 10
 """ The wait when shutting down consumers before closing the connection
 """
 
-verbose = False
+_verbose = False
+@property
+def verbose() -> bool:
+    return _verbose
+@verbose.setter
+def verbose(value: bool) -> None:
+    global _verbose
+    _verbose = value
+    service_handlers.verbose = value
 """ Set to True to enable module verbose logging
 """
 
@@ -131,6 +141,7 @@ class RMQTransport:
     _default_ttl: int
     _client_only: bool
     _message_callback: MessageCallbackFunction
+    _encryptor: Encryptor | None
 
     _connected_future: Any
     _disconnected_future: Any
@@ -164,6 +175,7 @@ class RMQTransport:
         prefetch_count: Optional[int] = None,
         default_ttl: Optional[int] = None,
         client_only: Optional[bool] = None,
+        encryptor: Optional[Encryptor] = None,
     ):  # NOSONAR
         """Create a new instance of the consumer class, passing in the AMQP
         URL used to connect to RabbitMQ.
@@ -183,6 +195,8 @@ class RMQTransport:
         :param int prefetch_count: The number of messages to prefetch defaults to 1, unlimited is 0.
                 Experiment with larger values for higher throughput in your user case.
         :param int default_ttl: The default time to live for messages in milliseconds, defaults to 12 hours.
+        :param bool client_only:
+        :param Encryptor encryptor: The encryptor to use for encrypting and decrypting messages
         """
         self._connected = False
         self._closing = False
@@ -202,6 +216,8 @@ class RMQTransport:
             logger.info("Client only transport")
             rpc_bindings = []
             event_bindings = []
+
+        self._encryptor = encryptor
 
         # Experiment with larger values for higher throughput.
         self._service_name = service_name
@@ -726,6 +742,8 @@ class RMQTransport:
         trace_id = properties.headers.get("trace_id", "unknown")
         nuropb_type = properties.headers.get("nuropb_type", "unknown")
         nuropb_version = properties.headers.get("nuropb_version", "unknown")
+        encrypted = properties.headers.get("encrypted", "") == "yes"
+
         logger.warning(
             f"Could not route {nuropb_type} message to service {method.routing_key} "
             f"correlation_id: {correlation_id} "
@@ -735,6 +753,11 @@ class RMQTransport:
         """ End the awaiting request future with a NuropbNotDeliveredError
         """
         if nuropb_type == "request":
+            if encrypted and self._encryptor:
+                body = self._encryptor.decrypt_payload(
+                    payload=body,
+                    correlation_id=correlation_id,
+                )
             nuropb_payload = decode_payload(body, "json")
             request_method = nuropb_payload["method"]
             nuropb_payload["tag"] = nuropb_type
@@ -787,12 +810,9 @@ class RMQTransport:
             )
 
     def send_message(
-        self,
-        payload: Dict[str, Any],
-        expiry: Optional[int] = None,
-        priority: Optional[int] = None,
-        encoding: str = "json",
-        publickey: Optional[rsa.RSAPrivateKey] = None,
+            self, payload: Dict[str, Any], expiry: Optional[int] = None,
+            priority: Optional[int] = None, encoding: str = "json",
+            encrypted: bool = False,
     ) -> None:
         """Send a message to over the RabbitMQ Transport
 
@@ -806,10 +826,8 @@ class RMQTransport:
         :param expiry: The message expiry in milliseconds
         :param priority: The message priority
         :param encoding: The encoding of the message
-        :param publickey: The public key to use for encryption, belongs to the target service
+        :param encrypted: True if the message is to be encrypted
         """
-        _ = publickey
-
         mandatory = False
         exchange = ""
         reply_to = ""
@@ -828,9 +846,28 @@ class RMQTransport:
             raise ValueError(f"Unknown payload type {payload['tag']}")
 
         if encoding == "json":
-            body = encode_payload(payload, "json")
+            body = encode_payload(
+                payload=payload,
+                payload_type="json",
+            )
         else:
             raise ValueError(f"unsupported encoding {encoding}")
+
+        """ now encrypt the payload if public_key is not None, update RMQ header
+        to indicate encrypted payload.
+        """
+        if encrypted and self._encryptor and payload["tag"] in ("request", "command", "response"):
+            encrypted = "yes"
+            to_service = None if payload["tag"] == "response" else payload["service"]
+            """ only outgoing response and command messages require the target service name
+            """
+            wire_body = self._encryptor.encrypt_payload(
+                payload=body,
+                correlation_id=payload["correlation_id"],
+                service_name=to_service,
+            )
+        else:
+            wire_body = body
 
         properties = dict(
             content_type="application/json",
@@ -841,6 +878,7 @@ class RMQTransport:
                 "nuropb_version": NUROPB_VERSION,
                 "nuropb_type": payload["tag"],
                 "trace_id": payload["trace_id"],
+                "encrypted": "yes" if encrypted else "",
             },
         )
         if expiry:
@@ -857,7 +895,7 @@ class RMQTransport:
             self._channel.basic_publish(
                 exchange=exchange,
                 routing_key=routing_key,
-                body=body,
+                body=wire_body,
                 properties=basic_properties,
                 mandatory=mandatory,
             )
@@ -965,6 +1003,7 @@ class RMQTransport:
         reply_to = properties.reply_to
         trace_id = properties.headers.get("trace_id", "unknown")
         correlation_id = properties.correlation_id
+        encrypted = properties.headers.get("encrypted", "") == "yes"
 
         if redelivered is True and acknowledgement == "nack":
             if verbose:
@@ -1002,8 +1041,7 @@ class RMQTransport:
                 payload=respond_payload,
                 priority=None,
                 encoding="json",
-                publickey=None,
-            )
+                encrypted=encrypted)
 
         """ NOTE - METADATA: keep this dictionary in sync with across all these methods:
             - on_service_message, on_service_message_complete
@@ -1087,6 +1125,7 @@ class RMQTransport:
         """
         nuropb_type = properties.headers.get("nuropb_type", "")
         nuropb_version = properties.headers.get("nuropb_version", "")
+        encrypted = properties.headers.get("encrypted", "") == "yes"
         if not verbose:
             logger.debug(f"service message received: '{nuropb_type}'")
         else:
@@ -1101,12 +1140,13 @@ trace_id: {properties.headers.get('trace_id', '')}
 content_type: {properties.content_type}
 nuropb_type: {nuropb_type}
 nuropb_version: {nuropb_version}
+encrypted: {encrypted}
 """
             )
         """ Handle for the unknown message type and reply to the originator if possible
         """
         nuropb_version = properties.headers.get("nuropb_version", "")
-
+        correlation_id = properties.correlation_id
         """ NOTE - METADATA: keep this dictionary in sync with across all these methods:
             - on_service_message, on_service_message_complete
             - on_response_message, on_response_message_complete
@@ -1120,8 +1160,9 @@ nuropb_version: {nuropb_version}
             "client_only": self._client_only,
             "nuropb_type": nuropb_type,
             "nuropb_version": nuropb_version,
-            "correlation_id": properties.correlation_id,
+            "correlation_id": correlation_id,
             "trace_id": properties.headers.get("trace_id", "unknown"),
+            "encrypted": encrypted,
         }
 
         message_complete_callback = functools.partial(
@@ -1135,6 +1176,11 @@ nuropb_version: {nuropb_version}
         """ Decode service message
         """
         try:
+            if encrypted and self._encryptor:
+                body = self._encryptor.decrypt_payload(
+                    payload=body,
+                    correlation_id=correlation_id,
+                )
             service_message = decode_rmq_body(basic_deliver, properties, body)
         except Exception as error:
             """Exceptions caught here are treated as permanent failures, ack the message and send
@@ -1267,8 +1313,11 @@ nuropb_version: {nuropb_version}
         :param pika.spec.BasicProperties properties: properties
         :param bytes body: The message body
         """
+        correlation_id = properties.correlation_id
         nuropb_type = properties.headers.get("nuropb_type", "")
         nuropb_version = properties.headers.get("nuropb_version", "")
+        encrypted = properties.headers.get("encrypted", "") == "yes"
+
         if not verbose:
             logger.debug(f"response message received: '{nuropb_type}'")
         else:
@@ -1280,11 +1329,12 @@ nuropb_version: {nuropb_version}
                     f"instance_id: {self._instance_id}\n"
                     f"exchange: {basic_deliver.exchange}\n"
                     f"routing_key: {basic_deliver.routing_key}\n"
-                    f"correlation_id: {properties.correlation_id}\n"
+                    f"correlation_id: {correlation_id}\n"
                     f"trace_id: {properties.headers.get('trace_id', '')}\n"
                     f"content_type: {properties.content_type}\n"
                     f"nuropb_type: {nuropb_type}\n"
                     f"nuropb_version: {nuropb_version}\n"
+                    f"encrypted: {encrypted}\n"
                 )
             )
         try:
@@ -1303,6 +1353,7 @@ nuropb_version: {nuropb_version}
                 "nuropb_version": nuropb_version,
                 "correlation_id": properties.correlation_id,
                 "trace_id": properties.headers.get("trace_id", "unknown"),
+                "encrypted": encrypted,
             }
             message_complete_callback = functools.partial(
                 self.on_service_message_complete,
@@ -1311,6 +1362,11 @@ nuropb_version: {nuropb_version}
                 properties.reply_to,
                 metadata,
             )
+            if encrypted and self._encryptor:
+                body = self._encryptor.decrypt_payload(
+                    payload=body,
+                    correlation_id=correlation_id,
+                )
             message = decode_rmq_body(basic_deliver, properties, body)
             self._message_callback(message, message_complete_callback, metadata)
         except Exception as err:

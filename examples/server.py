@@ -1,6 +1,10 @@
 import logging
 import asyncio
 from uuid import uuid4
+import os
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.backends import default_backend
 
 from nuropb.rmq_api import RMQAPI
 from nuropb.service_runner import ServiceContainer
@@ -15,14 +19,40 @@ async def main():
     service_name = "sandbox"
     instance_id = uuid4().hex
 
+    """ load private_key and create one if it done not exist
+    """
+    primary_key_filename = "key.pem"
+    private_key = None
+    if os.path.exists(primary_key_filename):
+        with open(primary_key_filename, "rb") as key_file:
+            private_key = serialization.load_pem_private_key(
+                data=key_file.read(),
+                backend=default_backend(),
+                password=None,
+            )
+    if private_key is None:
+        private_key = rsa.generate_private_key(
+            public_exponent=65537, key_size=2048, backend=default_backend()
+        )
+        primary_key_data: bytes = private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.TraditionalOpenSSL,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+        with open(primary_key_filename, "wt") as f:
+            f.write(primary_key_data.decode("utf-8"))
+
+
     transport_settings = dict(
         rpc_bindings=[service_name],
         event_bindings=[],
+        prefetch_count=1,
     )
 
     service_example = ServiceExample(
         service_name=service_name,
         instance_id=instance_id,
+        private_key=private_key,
     )
 
     api = RMQAPI(

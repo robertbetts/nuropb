@@ -53,7 +53,7 @@ class ErrorDescriptionType(TypedDict):
 
 
 class EventType(TypedDict):
-    """For compatibility with better futureproof serialisation support, Any encoded_payload type is
+    """For compatibility with better futureproof serialisation support, Any encoded payload type is
     supported.It is encouraged to use a json compatible key/value Type e.g. Dict[str, Any]
 
     :target: is currently provided here as an aid for the implementation, there are use cases
@@ -154,7 +154,7 @@ ResponsePayloadTypes = Union[ResponsePayloadDict, EventPayloadDict]
 
 
 class TransportServicePayload(TypedDict):
-    """Type[TransportServicePayload]: represents valid service instruction encoded_payload.
+    """Type[TransportServicePayload]: represents valid service instruction encoded payload.
     Depending on the transport implementation, there wire encoding and serialization may
     be different, and some of the fields may be in the body or header of the message.
     """
@@ -169,7 +169,7 @@ class TransportServicePayload(TypedDict):
 
 class TransportRespondPayload(TypedDict):
     """Type[TransportRespondPayload]: represents valid service response message,
-    valid nuropb encoded_payload types are ResponsePayloadDict, and EventPayloadDict
+    valid nuropb encoded payload types are ResponsePayloadDict, and EventPayloadDict
     """
 
     nuropb_protocol: str  # nuropb defined and validated
@@ -348,7 +348,7 @@ class NuropbCallAgain(NuropbException):
 
 class NuropbSuccess(NuropbException):
     """NuropbSuccessError: when this exception is raised, the transport layer will ACK the message
-    and return a success response if service encoded_payload is a 'request'. This is useful when the request
+    and return a success response if service encoded payload is a 'request'. This is useful when the request
     is a command or event and is executed asynchronously.
 
     There are some use cases where the service may want to return a success response irrespective

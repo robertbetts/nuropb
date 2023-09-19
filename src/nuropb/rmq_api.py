@@ -4,8 +4,8 @@ from uuid import uuid4
 from asyncio import Future
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.asymmetric import rsa
 
+from nuropb.encodings.encryption import Encryptor
 from nuropb.interface import (
     NuropbInterface,
     NuropbMessageError,
@@ -38,6 +38,7 @@ class RMQAPI(NuropbInterface):
     _service_instance: object | None
     _default_ttl: int
     _client_only: bool
+    _encryptor: Encryptor
     _service_discovery: Dict[str, Any]
     _service_public_keys: Dict[str, Any]
 
@@ -68,10 +69,15 @@ class RMQAPI(NuropbInterface):
             self._client_only = True
             self._connection_name = f"{vhost}-client-{instance_id}"
             service_name = f"{vhost}-client"
+            self._encryptor = Encryptor()
         else:
             """Configure for service mode"""
             self._client_only = False
             self._connection_name = f"{vhost}-{service_name}-{instance_id}"
+            self._encryptor = Encryptor(
+                service_name=service_name,
+                private_key=getattr(service_instance, "_private_key", None)
+            )
 
         self._service_name = service_name
         """ Is also a label for the api whether in client or service mode.
@@ -118,6 +124,7 @@ class RMQAPI(NuropbInterface):
                 "message_callback": self.receive_transport_message,
                 "rpc_exchange": rpc_exchange,
                 "events_exchange": events_exchange,
+                "encryptor": self._encryptor,
             }
         )
         self._transport = RMQTransport(**transport_settings)
@@ -244,6 +251,7 @@ class RMQAPI(NuropbInterface):
         ttl: Optional[int] = None,
         trace_id: Optional[str] = None,
         rpc_response: bool = True,
+        encrypted: bool = False,
     ) -> Union[ResponsePayloadDict, Any]:
         """Makes a rpc request for a method on a service mesh service and waits until the response is
         received.
@@ -269,6 +277,8 @@ class RMQAPI(NuropbInterface):
             if True (default), the actual response of the RPC call is returned and where there was an error,
             that is raised as an exception.
             Where rpc_response is a ResponsePayloadDict, is returned.
+        :param encrypted: bool
+            if True then the message will be encrypted in transit
         :return ResponsePayloadDict | Any: representing the response from the requested service with any
             exceptions raised
         """
@@ -300,7 +310,7 @@ class RMQAPI(NuropbInterface):
                 expiry=ttl,
                 priority=None,
                 encoding="json",
-                publickey=None,
+                encrypted=encrypted,
             )
         except Exception as err:
             if rpc_response is False:
@@ -357,6 +367,7 @@ class RMQAPI(NuropbInterface):
         context: Dict[str, Any],
         ttl: Optional[int] = None,
         trace_id: Optional[str] = None,
+        encrypted: bool = False,
     ) -> None:
         """command: sends a command to the target service. I.e. a targeted event. response is not expected
         and ignored.
@@ -371,7 +382,7 @@ class RMQAPI(NuropbInterface):
                     or
                     assumed by the requester to have failed with an undetermined state.
         :param trace_id: an identifier to trace the request over the network (e.g. uuid4 hex string)
-
+        :param encrypted: bool, if True then the message will be encrypted in transit
         :return: None
         """
         correlation_id = uuid4().hex
@@ -395,7 +406,11 @@ class RMQAPI(NuropbInterface):
             f"method: {method}\n"
         )
         self._transport.send_message(
-            payload=message, expiry=ttl, priority=None, encoding="json", publickey=None
+            payload=message,
+            expiry=ttl,
+            priority=None,
+            encoding="json",
+            encrypted=encrypted,
         )
 
     def publish_event(
@@ -404,6 +419,7 @@ class RMQAPI(NuropbInterface):
         event: Dict[str, Any],
         context: Dict[str, Any],
         trace_id: Optional[str] = None,
+        encrypted: bool = False,
     ) -> None:
         """Broadcasts an event with the given topic.
 
@@ -418,6 +434,7 @@ class RMQAPI(NuropbInterface):
                 - method: str
         :param trace_id: str optional
             an identifier to trace the request over the network (e.g. an uuid4 hex string)
+        :param encrypted: bool, if True then the message will be encrypted in transit
         """
         correlation_id = uuid4().hex
         message: EventPayloadDict = {
@@ -436,17 +453,23 @@ class RMQAPI(NuropbInterface):
         )
         self._transport.send_message(
             payload=message,
-            encoding="json",
             priority=None,
-            publickey=None,
+            encoding="json",
+            encrypted=encrypted,
         )
 
-    async def describe_service(self, service_name: str) -> Dict[str, Any] | None:
-        """describe_service: returns the service description for the given service_name
+    async def describe_service(self, service_name: str, refresh: bool = False) -> Dict[str, Any] | None:
+        """describe_service: returns the service information for the given service_name,
+        if it is not already cached or refresh is try then the service discovery is queried directly.
+
         :param service_name: str
+        :param refresh: bool
         :return: dict
         """
-        result = await self.request(
+        if service_name in self._service_discovery or refresh:
+            return self._service_discovery[service_name]
+
+        service_info = await self.request(
             service=service_name,
             method="nuropb_describe",
             params={},
@@ -454,42 +477,41 @@ class RMQAPI(NuropbInterface):
             ttl=60 * 1000,  # 1 minute
             trace_id=uuid4().hex,
         )
-        return result
+        if not isinstance(service_info, dict):
+            raise ValueError(f"Invalid service_info returned for service {service_name}")
+        else:
+            self._service_discovery[service_name] = service_info
+            try:
+                text_public_key = service_info.get(
+                    "public_key", None
+                )
+                if text_public_key:
+                    public_key = serialization.load_pem_public_key(
+                        data=text_public_key.encode("ascii"),
+                        backend=default_backend(),
+                    )
+                    self._encryptor.add_service_public_key(
+                        service_name=service_name, public_key=public_key
+                    )
+            except Exception as err:
+                logger.error(f"error loading the public key for {service_name}: {err}")
+            finally:
+                return service_info
 
-    async def check_method_for_encryption(self, service_name: str, method_name: str) -> rsa.RSAPublicKey | None:
-        """check_method_for_encryption: Queries the service discovery cache, if an entry for the service_name
-        does not exist, then the service discovery is queried directly.
-
-        if encryption is required for the method called, then reference the service discovery cache
-        for the service private key required to encrypt the request.
+    async def requires_encryption(self, service_name: str, method_name: str) -> bool:
+        """requires_encryption: Queries the service discovery information for the service_name
+        and returns True if encryption is required else False.
+        none of encryption is not required.
 
         :param service_name: str
         :param method_name: str
         :return: bool
         """
-        if service_name not in self._service_discovery:
-            self._service_discovery[service_name] = await self.describe_service(
-                service_name
-            )
-            text_public_key = self._service_discovery[service_name].get(
-                "public_key", None
-            )
-            if text_public_key:
-                self._service_public_keys[
-                    service_name
-                ] = serialization.load_pem_public_key(
-                    data=text_public_key,
-                    backend=default_backend(),
-                )
-
-        service_info = self._service_discovery[service_name]
+        service_info = await self.describe_service(service_name)
         method_info = service_info["methods"].get(method_name, None)
         if method_info is None:
             raise ValueError(
                 f"Method {method_name} not found on service {service_name}"
             )
-        if method_info.get("requires_encryption", False):
-            return self._service_public_keys.get(service_name, None)
-
-        return None
+        return method_info.get("requires_encryption", False)
 

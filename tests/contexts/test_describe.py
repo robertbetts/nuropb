@@ -108,30 +108,43 @@ class OrderManagementService:
         public_exponent=65537, key_size=2048, backend=default_backend()
     )
 
-    @publish_to_mesh(requires_encryption=True)
     @nuropb_context
+    @publish_to_mesh(requires_encryption=True)
     async def get_orders(
             self,
-            ctx,
+            ctx: NuropbContextManager,
             order_date: datetime.datetime,
             account: Optional[str] = None,
             status: Optional[str] = "",
             security: Optional[str] = None,
             side: Optional[str] = None
     ) -> List[Order]:
+        _ = order_date, account, status, security, side
+        assert isinstance(self, OrderManagementService)
+        assert isinstance(ctx, NuropbContextManager)
         return []
 
-    @publish_to_mesh
     @nuropb_context
-    async def create_order(
-            self,
-            ctx,
-            order: Order) -> Order:
+    @publish_to_mesh
+    async def create_order(self, ctx: NuropbContextManager) -> Order:
+        assert isinstance(self, OrderManagementService)
+        assert isinstance(ctx, NuropbContextManager)
         new_order = Order(account="ABC1234",
                           security="SSE.L",
                           quantity=1000,
                           side="sell")
         return new_order
+
+    @nuropb_context
+    @publish_to_mesh(hide_method=True)
+    async def internal_method(self, ctx: NuropbContextManager) -> str:
+        assert isinstance(self, OrderManagementService)
+        assert isinstance(ctx, NuropbContextManager)
+        return "OK"
+
+    async def undecorated_method(self) -> str:
+        assert isinstance(self, OrderManagementService)
+        return "OK"
 
 
 class Service:
@@ -170,4 +183,8 @@ class Service:
 def test_instance_describe():
     service_instance = OrderManagementService()
     result = describe_service(service_instance)
-    assert 1 == 1
+    assert result["description"] == service_instance.__doc__.strip()
+    assert len(result["methods"]) == 3
+    assert len(result["methods"]["create_order"]) == 3
+    assert result["methods"]["get_orders"]["requires_encryption"] is True
+

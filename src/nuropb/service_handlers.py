@@ -17,7 +17,7 @@ from typing import Any, Tuple, List, Awaitable, Dict
 from tornado.concurrent import is_future
 import pika.spec
 
-from nuropb.contexts.context_manager_decorator import method_has_nuropb_context
+from nuropb.contexts.context_manager_decorator import method_requires_nuropb_context
 from nuropb.contexts.describe import describe_service
 from nuropb.interface import (
     ResponsePayloadDict,
@@ -35,7 +35,17 @@ from nuropb.interface import (
 )
 
 logger = logging.getLogger(__name__)
-verbose = False
+
+_verbose = False
+@property
+def verbose() -> bool:
+    return _verbose
+@verbose.setter
+def verbose(value: bool) -> None:
+    global _verbose
+    _verbose = value
+""" Set to True to enable module verbose logging
+"""
 
 
 def error_dict_from_exception(exception: Exception | BaseException) -> Dict[str, str]:
@@ -362,27 +372,26 @@ def execute_request(
             params = payload["params"]
 
             """ TODO: think about how to pass the context to the service executing the method
-            # context = encoded_payload["context"]
+            # context = payload["context"]
             """
 
-            if method_name != "nuropb_describe":
-                if (
-                    method_name.startswith("_")
-                    or not hasattr(service_instance, method_name)
-                    or not callable(getattr(service_instance, method_name))
-                ):
-                    raise NuropbHandlingError(
-                        description="Unknown method {}".format(method_name),
-                        payload=payload,
-                        exception=None,
-                    )
+            if method_name != "nuropb_describe" and (
+                        method_name.startswith("_")
+                        or not hasattr(service_instance, method_name)
+                        or not callable(getattr(service_instance, method_name))
+                    ):
+                raise NuropbHandlingError(
+                    description="Unknown method {}".format(method_name),
+                    payload=payload,
+                    exception=None,
+                )
 
             try:
                 if method_name == "nuropb_describe":
                     result = describe_service(service_instance)
                 else:
                     service_instance_method = getattr(service_instance, method_name)
-                    if method_has_nuropb_context(service_instance_method):
+                    if method_requires_nuropb_context(service_instance_method):
                         result = service_instance_method(
                             service_message["nuropb_payload"]["context"], **params
                         )
@@ -396,8 +405,9 @@ def execute_request(
             except Exception as err:
                 if verbose:
                     logger.exception(err)
+                error = f"{type(err).__name__}: {err}"
                 raise NuropbException(
-                    description=f"Runtime exception calling {service_name}.{method_name}:{err}",
+                    description=f"Runtime exception calling {service_name}.{method_name}: {error}",
                     payload=payload,
                     exception=err,
                 )

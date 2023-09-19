@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 
 AuthoriseFunc = Callable[[str], Dict[str, Any]]
 
+
 def method_visible_on_mesh(method: Callable[..., Any]) -> bool:
     """This function checks if a method has been decorated with @publish_to_mesh
     :param method: callable
@@ -111,7 +112,7 @@ def describe_service(class_instance: object) -> Dict[str, Any] | None:
             requires_encryption = getattr(
                 method, "__nuropb_requires_encryption__", False
             )
-            if requires_encryption and not service_has_encrypted_methods:
+            if requires_encryption:
                 service_has_encrypted_methods = True
 
             ctx_arg_name = getattr(method, "__nuropb_context_arg__", "ctx")
@@ -191,6 +192,6 @@ def describe_service(class_instance: object) -> Dict[str, Any] | None:
             service_info["public_key"] = private_key.public_key().public_bytes(
                 encoding=serialization.Encoding.PEM,
                 format=serialization.PublicFormat.SubjectPublicKeyInfo,
-            )
+            ).decode("ascii")
 
         return service_info

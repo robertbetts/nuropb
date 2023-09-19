@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives.asymmetric import padding
 
 
 def encrypt_payload(payload: str | bytes, key: str | bytes) -> bytes:
-    """Encrypt encoded_payload with a key
+    """Encrypt encoded payload with a key
     :param payload: str | bytes
     :param key: str
     :return: bytes
@@ -22,13 +22,14 @@ def encrypt_payload(payload: str | bytes, key: str | bytes) -> bytes:
 
 
 def decrypt_payload(encrypted_payload: str | bytes, key: str | bytes) -> bytes:
-    """Decrypt encoded_payload with a key
+    """Decrypt encoded payload with a key
     :param encrypted_payload: str | bytes
     :param key: str
     :return: bytes
     """
     f = Fernet(key=key, backend=default_backend())
-    payload = f.decrypt(b64decode(encrypted_payload))
+    payload_to_decrypt = b64decode(encrypted_payload)
+    payload = f.decrypt(payload_to_decrypt)
     return payload
 
 
@@ -97,6 +98,13 @@ class Encryptor:
         :param public_key: rsa.RSAPublicKey
         """
         self._service_public_keys[service_name] = public_key
+
+    def get_service_public_key(self, service_name: str) -> rsa.RSAPublicKey:
+        """Get a public key for a service
+        :param service_name: str
+        :return: rsa.RSAPublicKey
+        """
+        return self._service_public_keys.get[service_name]
 
     def encrypt_payload(
         self,

@@ -128,20 +128,20 @@ class JsonSerializor(object):
         self._encryption_keys = {}
 
     def encode(self, payload: Any) -> str:
-        """Encodes a nuropb encoded_payload to JSON.
+        """Encodes a nuropb encoded payload to JSON.
 
-        :param payload: Any, The encoded_payload to encode.
-        :return: str, The JSON-encoded encoded_payload.
+        :param payload: Any, The encoded payload to encode.
+        :return: str, The JSON-encoded encoded payload.
         """
         _ = self
         json_payload = to_json(payload)
         return json_payload
 
     def decode(self, json_payload: str) -> Any:
-        """Decodes a JSON-encoded nuropb encoded_payload.
+        """Decodes a JSON-encoded nuropb encoded payload.
 
-        :param json_payload: str, The JSON-encoded encoded_payload to decode.
-        :return: Any, The decoded encoded_payload.
+        :param json_payload: str, The JSON-encoded encoded payload to decode.
+        :return: Any, The decoded encoded payload.
         """
         _ = self
         payload = json.loads(json_payload)

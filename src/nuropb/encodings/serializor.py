@@ -1,3 +1,5 @@
+from cryptography.hazmat.primitives.asymmetric import rsa
+
 from nuropb.encodings.json_serialisation import JsonSerializor
 from nuropb.interface import PayloadDict
 
@@ -6,7 +8,7 @@ SerializorTypes = JsonSerializor
 
 
 def get_serializor(payload_type: str = "json") -> SerializorTypes:
-    """Returns a serializor object for the specified encoded_payload type
+    """Returns a serializor object for the specified encoded payload type
     :param payload_type: "json"
     :return: a serializor object
     """
@@ -17,13 +19,16 @@ def get_serializor(payload_type: str = "json") -> SerializorTypes:
 
 
 def encode_payload(
-    payload: PayloadDict,
-    payload_type: str = "json",
+        payload: PayloadDict,
+        payload_type: str = "json",
+        public_key: rsa.RSAPublicKey = None
 ) -> bytes:
     """
+    :param public_key:
     :param payload:
     :param payload_type: "json"
-    :return: a json bytes string imputed encoded_payload
+    :param public_key: rsa.PublicKey
+    :return: a json bytes string imputed encoded payload
     """
     if payload_type != "json":
         raise ValueError(f"payload_type {payload_type} is not supported")
@@ -32,8 +37,8 @@ def encode_payload(
         get_serializor(
             payload_type=payload_type,
         )
-        .encode(payload)
-        .encode()
+        .encode(payload)  # to json
+        .encode()  # to bytes
     )
 
 

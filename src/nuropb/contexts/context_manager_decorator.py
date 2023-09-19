@@ -5,7 +5,7 @@ from functools import wraps
 from nuropb.contexts.context_manager import NuropbContextManager
 
 
-def method_has_nuropb_context(method: Callable[..., Any]) -> bool:
+def method_requires_nuropb_context(method: Callable[..., Any]) -> bool:
     """This function checks if a method has been decorated with @nuropb_context
     :param method: Callable
     :return: bool
@@ -61,22 +61,25 @@ def nuropb_context(
                     f"The @nuropb_context, expects a {context_parameter}: NuropbContextManager "
                     f"or dict, as the first argument in calling instance.method"
                 )
-            context = args[1]
-            if isinstance(context, NuropbContextManager):
-                ctx = context
-            else:
+            method_args = list(args)
+            ctx = method_args[1]
+            if not isinstance(ctx, NuropbContextManager):
+                """ Replace dictionary context with NuropbContextManager instance
+                """
                 ctx = NuropbContextManager(
-                    context=context,
+                    context=method_args[1],
                     suppress_exceptions=suppress_exceptions,
                 )
+                method_args[1] = ctx
 
             authorise_func = getattr(wrapper, "__nuropb_authorise_func__", None)
             if authorise_func is not None:
                 context_token_key = getattr(wrapper, "__nuropb_context_token_key__")
                 ctx.user_claims = authorise_func(ctx.context[context_token_key])
 
-            kwargs[context_parameter] = ctx
-            return method(*args[1:], **kwargs)
+            # kwargs[context_parameter] = ctx
+            # return method(*args[1:], **kwargs)
+            return method(*method_args, **kwargs)
 
         setattr(wrapper, "__nuropb_context__", True)
         setattr(wrapper, "__nuropb_context_arg__", context_parameter)

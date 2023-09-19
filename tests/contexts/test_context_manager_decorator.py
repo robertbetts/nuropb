@@ -12,18 +12,21 @@ class TestServiceClass:
     _service_name: str
 
     def hello_no_context(self, param1: str) -> str:  # pragma: no cover
-        _ = self
+        assert isinstance(self, TestServiceClass)
         return f"hello {param1}"
 
-    def hello_with_context(self, ctx: Dict[str, Any], param1: str) -> str:
-        _ = self
+    def hello_with_context_param(self, ctx: Dict[str, Any], param1: str) -> str:
+        assert isinstance(self, TestServiceClass)
+        if not isinstance(ctx, dict):
+            raise TypeError("ctx parameter must be a dictionary")
         return f"from {ctx['user_id']}, hello {param1}"
 
     @nuropb_context
     def hello_with_context_decorator(
         self, ctx: NuropbContextManager, param1: str
     ) -> str:
-        _ = self
+        assert isinstance(self, TestServiceClass)
+        assert isinstance(ctx, NuropbContextManager)
         return f"from {ctx.context['user_id']}, hello {param1}"
 
 
@@ -89,18 +92,24 @@ def test_nuropb_context(context, instance):
     """ Test with NuropbContextManager context injection and method has no decorator
     """
     with pytest.raises(TypeError):
-        result = instance.hello_with_context(ctx, **params)
+        result = instance.hello_with_context_param(ctx, **params)
 
     """ Test with dictionary context injection and method has no decorator and params contains
     a ctx parameter as would be expected.
     """
     params = {
         "param1": "world",
-        "ctx": {"key": "value"},
+        "ctx": {"user_id": "test_user_id"},
     }
+    result = instance.hello_with_context_param(context, param1="world")
+    assert result == "from test_user_id, hello world"
+
+    result = instance.hello_with_context_param(**params)
+    assert result == "from test_user_id, hello world"
+
     ctx = context
     with pytest.raises(TypeError):
-        result = instance.hello_with_context(ctx, **params)
+        result = instance.hello_with_context_param(ctx, **params)
 
 
 def test_nuropb_context_decorator(context, instance):

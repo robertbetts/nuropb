@@ -12,15 +12,14 @@ logger = logging.getLogger()
 
 class ServiceExample:
     _service_name: str
-    _private_key = rsa.generate_private_key(
-        public_exponent=65537, key_size=2048, backend=default_backend()
-    )
     _instance_id: str
+    _private_key: rsa.RSAPrivateKey
     _method_call_count: int
 
-    def __init__(self, service_name: str, instance_id: str):
+    def __init__(self, service_name: str, instance_id: str, private_key: rsa.RSAPrivateKey):
         self._service_name = service_name
         self._instance_id = instance_id
+        self._private_key = private_key
         self._method_call_count = 0
 
     @classmethod
@@ -35,17 +34,27 @@ class ServiceExample:
         _ = target, context, trace_id
         logger.debug(f"Received event {topic}:{event}")
 
-    @publish_to_mesh(requires_encryption=True)
+    @publish_to_mesh(requires_encryption=False)
     def test_method(self, **kwargs) -> str:
         self._method_call_count += 1
-
         success_result = f"response from {self._service_name}.test_method"
+        return success_result
+
+    @publish_to_mesh(requires_encryption=True)
+    def test_encrypt_method(self, **kwargs) -> str:
+        self._method_call_count += 1
+        success_result = f"response from {self._service_name}.test_encrypt_method"
+        return success_result
+
+    def test_exception_method(self, **kwargs) -> str:
+        self._method_call_count += 1
+        success_result = f"response from {self._service_name}.test_exception_method"
 
         if self._method_call_count % 400 == 0:
             events: List[EventType] = [
                 {
                     "topic": "test-event",
-                    "encoded_payload": {
+                    "payload": {
                         "event_key": "event_value",
                     },
                     "target": [],
