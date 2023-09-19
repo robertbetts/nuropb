@@ -36,7 +36,7 @@ from nuropb.rmq_lib import (
 from nuropb import service_handlers
 from nuropb.service_handlers import (
     create_transport_response_from_rmq_decode_exception,
-    error_dict_from_exception
+    error_dict_from_exception,
 )
 from nuropb.utils import obfuscate_credentials
 
@@ -66,14 +66,20 @@ CONSUMER_CLOSED_WAIT_TIMEOUT = 10
 """
 
 _verbose = False
+
+
 @property
 def verbose() -> bool:
     return _verbose
+
+
 @verbose.setter
 def verbose(value: bool) -> None:
     global _verbose
     _verbose = value
     service_handlers.verbose = value
+
+
 """ Set to True to enable module verbose logging
 """
 
@@ -810,9 +816,12 @@ class RMQTransport:
             )
 
     def send_message(
-            self, payload: Dict[str, Any], expiry: Optional[int] = None,
-            priority: Optional[int] = None, encoding: str = "json",
-            encrypted: bool = False,
+        self,
+        payload: Dict[str, Any],
+        expiry: Optional[int] = None,
+        priority: Optional[int] = None,
+        encoding: str = "json",
+        encrypted: bool = False,
     ) -> None:
         """Send a message to over the RabbitMQ Transport
 
@@ -856,7 +865,11 @@ class RMQTransport:
         """ now encrypt the payload if public_key is not None, update RMQ header
         to indicate encrypted payload.
         """
-        if encrypted and self._encryptor and payload["tag"] in ("request", "command", "response"):
+        if (
+            encrypted
+            and self._encryptor
+            and payload["tag"] in ("request", "command", "response")
+        ):
             encrypted = "yes"
             to_service = None if payload["tag"] == "response" else payload["service"]
             """ only outgoing response and command messages require the target service name
@@ -1041,7 +1054,8 @@ class RMQTransport:
                 payload=respond_payload,
                 priority=None,
                 encoding="json",
-                encrypted=encrypted)
+                encrypted=encrypted,
+            )
 
         """ NOTE - METADATA: keep this dictionary in sync with across all these methods:
             - on_service_message, on_service_message_complete

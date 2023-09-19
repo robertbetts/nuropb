@@ -19,9 +19,9 @@ def get_serializor(payload_type: str = "json") -> SerializorTypes:
 
 
 def encode_payload(
-        payload: PayloadDict,
-        payload_type: str = "json",
-        public_key: rsa.RSAPublicKey = None
+    payload: PayloadDict,
+    payload_type: str = "json",
+    public_key: rsa.RSAPublicKey = None,
 ) -> bytes:
     """
     :param public_key:

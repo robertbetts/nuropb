@@ -64,8 +64,7 @@ def nuropb_context(
             method_args = list(args)
             ctx = method_args[1]
             if not isinstance(ctx, NuropbContextManager):
-                """ Replace dictionary context with NuropbContextManager instance
-                """
+                """Replace dictionary context with NuropbContextManager instance"""
                 ctx = NuropbContextManager(
                     context=method_args[1],
                     suppress_exceptions=suppress_exceptions,

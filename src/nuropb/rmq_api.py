@@ -76,7 +76,7 @@ class RMQAPI(NuropbInterface):
             self._connection_name = f"{vhost}-{service_name}-{instance_id}"
             self._encryptor = Encryptor(
                 service_name=service_name,
-                private_key=getattr(service_instance, "_private_key", None)
+                private_key=getattr(service_instance, "_private_key", None),
             )
 
         self._service_name = service_name
@@ -219,9 +219,7 @@ class RMQAPI(NuropbInterface):
         """ The logic below is only relevant for incoming service messages
         """
         if self._service_instance is None:
-            error_description = (
-                f"No service instance configured to handle the {service_message['nuropb_type']} instruction"
-            )
+            error_description = f"No service instance configured to handle the {service_message['nuropb_type']} instruction"
             logger.warning(error_description)
             response = NuropbHandlingError(
                 description=error_description,
@@ -458,7 +456,9 @@ class RMQAPI(NuropbInterface):
             encrypted=encrypted,
         )
 
-    async def describe_service(self, service_name: str, refresh: bool = False) -> Dict[str, Any] | None:
+    async def describe_service(
+        self, service_name: str, refresh: bool = False
+    ) -> Dict[str, Any] | None:
         """describe_service: returns the service information for the given service_name,
         if it is not already cached or refresh is try then the service discovery is queried directly.
 
@@ -478,13 +478,13 @@ class RMQAPI(NuropbInterface):
             trace_id=uuid4().hex,
         )
         if not isinstance(service_info, dict):
-            raise ValueError(f"Invalid service_info returned for service {service_name}")
+            raise ValueError(
+                f"Invalid service_info returned for service {service_name}"
+            )
         else:
             self._service_discovery[service_name] = service_info
             try:
-                text_public_key = service_info.get(
-                    "public_key", None
-                )
+                text_public_key = service_info.get("public_key", None)
                 if text_public_key:
                     public_key = serialization.load_pem_public_key(
                         data=text_public_key.encode("ascii"),
@@ -514,4 +514,3 @@ class RMQAPI(NuropbInterface):
                 f"Method {method_name} not found on service {service_name}"
             )
         return method_info.get("requires_encryption", False)
-

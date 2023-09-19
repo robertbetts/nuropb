@@ -37,13 +37,19 @@ from nuropb.interface import (
 logger = logging.getLogger(__name__)
 
 _verbose = False
+
+
 @property
 def verbose() -> bool:
     return _verbose
+
+
 @verbose.setter
 def verbose(value: bool) -> None:
     global _verbose
     _verbose = value
+
+
 """ Set to True to enable module verbose logging
 """
 
@@ -376,10 +382,10 @@ def execute_request(
             """
 
             if method_name != "nuropb_describe" and (
-                        method_name.startswith("_")
-                        or not hasattr(service_instance, method_name)
-                        or not callable(getattr(service_instance, method_name))
-                    ):
+                method_name.startswith("_")
+                or not hasattr(service_instance, method_name)
+                or not callable(getattr(service_instance, method_name))
+            ):
                 raise NuropbHandlingError(
                     description="Unknown method {}".format(method_name),
                     payload=payload,

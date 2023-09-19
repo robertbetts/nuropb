@@ -92,7 +92,9 @@ class Encryptor:
         """
         return Fernet.generate_key()
 
-    def add_service_public_key(self, service_name: str, public_key: rsa.RSAPublicKey) -> None:
+    def add_service_public_key(
+        self, service_name: str, public_key: rsa.RSAPublicKey
+    ) -> None:
         """Add a public key for a service
         :param service_name: str
         :param public_key: rsa.RSAPublicKey

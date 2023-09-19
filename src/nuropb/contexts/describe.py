@@ -189,9 +189,13 @@ def describe_service(class_instance: object) -> Dict[str, Any] | None:
                     f"Service {service_name} has encrypted methods but no private key has been set"
                 )
 
-            service_info["public_key"] = private_key.public_key().public_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PublicFormat.SubjectPublicKeyInfo,
-            ).decode("ascii")
+            service_info["public_key"] = (
+                private_key.public_key()
+                .public_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PublicFormat.SubjectPublicKeyInfo,
+                )
+                .decode("ascii")
+            )
 
         return service_info
