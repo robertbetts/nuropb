@@ -517,7 +517,8 @@ class RMQTransport:
             self._closing = False
         else:
             self._connecting = False
-            self.connect()
+            # self.connect()
+            asyncio.create_task(self.start())
 
     def open_channel(self) -> None:
         """Open a new channel with RabbitMQ by issuing the Channel.Open RPC command. When RabbitMQ
