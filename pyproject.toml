@@ -1,13 +1,15 @@
 [tool.poetry]
 name = "nuropb"
-version = "0.1.4"
+version = "0.1.5"
 description = "NuroPb - A Distributed Event Driven Service Mesh"
 authors = ["Robert Betts <robert.betts@genoa.io>"]
 readme = "README.md"
+license = "Apache-2.0"
 homepage = "https://github.com/robertbetts/nuropb"
 repository = "https://github.com/robertbetts/nuropb"
 keywords = ["python", "asynchrous", "api", "event", "rpc", "distributed", "edd", "ddd", "sevice-mesh"]
 classifiers = [
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.10",
     "Operating System :: OS Independent"
