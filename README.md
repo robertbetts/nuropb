@@ -7,21 +7,22 @@
 [![CodeFactor](https://www.codefactor.io/repository/github/robertbetts/nuropb/badge)](https://www.codefactor.io/repository/github/robertbetts/nuropb)
 [![License: Apache 2.0](https://img.shields.io/pypi/l/giteo)](https://www.apache.org/licenses/LICENSE-2.0.txt)
 
-You have a Python class that you want to make available as a service to consumers.
-* You potentially want to scale this service horizontally many times over, likely at an unknown scale.
-* Your service may need to communicate to other services too
+Do you have a Python class that you want to make available as a service to consumers or other services, or
+* You potentially want to scale a service horizontally many times over, likely at an unknown scale.
+* Your service may need to communicate to other services
 * There are event driven processes and flows across your service landscape
 * You have websocket endpoints that need to integrate seamlessly across a service mesh and event driven architecture
-* A growing army of MlOps and Datascience engineers are joining, and they need to be able to integrate their 
-  work into your systems.
+* A growing army of Ml-Ops and Datascience engineers are joining, with the need to to integrate their efforts
+  across many systems.
+* Needing a service proxy that bridges cloud VPNs and on-premise networks 
 
-If any of these are of interest to you then NuroPb is worth considering. NuroPb It falls into the domain of  
-tools and frameworks for the abstraction of integration plumbing, and enabling software engineers to focus on the 
+If any of these are of interest to you, then NuroPb is worth considering. NuroPb It falls into the domain of  
+tools and frameworks for the abstraction of integration plumbing, enabling software engineers to focus on the 
 problems they're hired to solve.
 
 ## Where does the name originate from? 
 NuroPb is a contraction of the term nervous system and the scientific symbol for Lead. Lead
-associated with plumbing. So NuroPb is a system's neural plumbing framework.
+associated with plumbing. So NuroPb is a system's nervous system and plumbing.
 
 ## Pattern and Approach
 NuroPb is a pattern and approach that supports event driven and service mesh engineering requirements. The
