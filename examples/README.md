@@ -1,4 +1,4 @@
-# End to end Example using nuroPb as the plumbing for a simple Service Mesh Example
+# Examples using nuroPb as the plumbing for a service mesh, async RPC, etc.
 
 This code here is as example and to demonstrate the concepts of the nuroPb service mesh library. Its
 is also use by the development team for integration testing to validate of some in flight design and 
@@ -73,13 +73,16 @@ poetry run python examples/scripted_mesh_setup.py
 poetry run python examples/server.py
 ```
 
-The `examples/server_basic.py` example is for reference here, there are not requests from 
+The `examples/server_basic.py` example is for reference mainly, there are no requests from 
 `examples/client.py`. Add them at your pleasure.
 
 Finally, run the client example.
 ```bash
 poetry run python examples/client.py
 ```
+
+**`all_in_one.py`** is a single file example of a client and server running in the same python file. It also 
+demonstrates the use of the `nuropb_context` and `publish_to_mesh` context manager decorators
 
 And there you are. Let us know what you think! All feedback is welcome.
 
