@@ -3,7 +3,6 @@ import functools
 from typing import List, Set, Optional, Any, Dict, Awaitable, Literal, TypedDict
 import asyncio
 import time
-from cryptography.hazmat.primitives.asymmetric import rsa
 
 import pika
 from pika import connection
@@ -233,7 +232,7 @@ class RMQTransport:
         self._events_exchange = events_exchange or "nuropb-events-exchange"
         self._dl_exchange = dl_exchange or "nuropb-dl-exchange"
         self._dl_queue = dl_queue or f"nuropb-{self._service_name}-dl"
-        self._service_queue = service_queue or f"nuropb-{self._service_name}-service"
+        self._service_queue = service_queue or f"nuropb-{self._service_name}-sq"
         self._response_queue = (
             response_queue
             or f"nuropb-{self._service_name}-{self._instance_id}-response"

@@ -490,13 +490,12 @@ class RMQAPI(NuropbInterface):
                         data=text_public_key.encode("ascii"),
                         backend=default_backend(),
                     )
-                    self._encryptor.add_service_public_key(
+                    self._encryptor.add_public_key(
                         service_name=service_name, public_key=public_key
                     )
+                return service_info
             except Exception as err:
                 logger.error(f"error loading the public key for {service_name}: {err}")
-            finally:
-                return service_info
 
     async def requires_encryption(self, service_name: str, method_name: str) -> bool:
         """requires_encryption: Queries the service discovery information for the service_name
@@ -514,3 +513,8 @@ class RMQAPI(NuropbInterface):
                 f"Method {method_name} not found on service {service_name}"
             )
         return method_info.get("requires_encryption", False)
+
+    async def has_public_key(self, service_name: str) -> bool:
+        """service_has_public_key: returns True if the service has a public key registered, else False"""
+        _ = await self.describe_service(service_name)
+        return self._encryptor.has_public_key(service_name)

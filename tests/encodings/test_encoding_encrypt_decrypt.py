@@ -55,7 +55,7 @@ def test_encrypted_payload_exchange():
     )
     service_encryptor = Encryptor(service_name, service_private_key)
     client_encryptor = Encryptor()
-    client_encryptor.add_service_public_key(
+    client_encryptor.add_public_key(
         service_name=service_name, public_key=service_private_key.public_key()
     )
     request_payload_body = encode_payload(request_payload, "json")

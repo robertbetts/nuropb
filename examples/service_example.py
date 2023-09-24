@@ -1,7 +1,6 @@
 import logging
 from typing import List
 from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.backends import default_backend
 
 from nuropb.contexts.describe import publish_to_mesh
 from nuropb.interface import NuropbException, NuropbSuccess, NuropbCallAgain, EventType
@@ -79,19 +78,19 @@ class ServiceExample:
         self._method_call_count += 1
         return f"response from {self._service_name}.test_async_method"
 
-    async def async_method(self, **kwargs) -> int:
+    async def async_method(self, **kwargs) -> int:  # pragma: no cover
         self._method_call_count += 1
         return self._method_call_count
 
-    def sync_method(self, **kwargs) -> int:
+    def sync_method(self, **kwargs) -> int:  # pragma: no cover
         self._method_call_count += 1
         return self._method_call_count
 
     def method_with_exception(self, **kwargs) -> None:
-        raise Exception("Test sync exception")
+        raise RuntimeError("Test sync exception")
 
     def async_method_with_exception(self, **kwargs) -> None:
-        raise Exception("Test async method exception")
+        raise RuntimeError("Test async method exception")
 
     def method_with_nuropb_exception(self, **kwargs) -> None:
         raise NuropbException("Test Nuropb Exception")
