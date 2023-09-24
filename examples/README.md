@@ -1,4 +1,4 @@
-# End to end Example using nuroPb as the plumbing for a simple Service Mesh Example
+# Examples using nuroPb as the plumbing for a service mesh, async RPC, etc.
 
 This code here is as example and to demonstrate the concepts of the nuroPb service mesh library. Its
 is also use by the development team for integration testing to validate of some in flight design and 
