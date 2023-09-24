@@ -1,6 +1,6 @@
 # NuroPb
 
-## The neural plumbing for an Asynchronous, Distributed, Event Driven Service Mesh
+## The nervous system of plumbing for an Asynchronous, Distributed, Event Driven, Service Mesh
 
 [![codecov](https://codecov.io/gh/robertbetts/nuropb/branch/main/graph/badge.svg?token=DVSBZY794D)](https://codecov.io/gh/robertbetts/nuropb)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
@@ -19,10 +19,12 @@ If any of these are of interest to you then NuroPb is worth considering. NuroPb 
 tools and frameworks for the abstraction of integration plumbing, and enabling software engineers to focus on the 
 problems they're hired to solve.
 
-**Where does the name originate from?** NuroPb is a contraction of the word neural and the scientific symbol for Lead. Lead
+## Where does the name originate from? 
+NuroPb is a contraction of the term nervous system and the scientific symbol for Lead. Lead
 associated with plumbing. So NuroPb is a system's neural plumbing framework.
 
-**NuroPb is a pattern and approach** that supports event driven and service mesh engineering requirements. The
+## Pattern and Approach
+NuroPb is a pattern and approach that supports event driven and service mesh engineering requirements. The
 early roots evolved in the 2000's, and during the 2010's the pattern was used to drive hedge funds, startups, 
 banks and crypto and blockchain ventures. It's core development is in Python, and the pattern has been used
 alongside Java, JavasScript and GoLang, Unfortunately those efforts are copyrighted. Any platform with support
