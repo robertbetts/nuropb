@@ -41,7 +41,7 @@ async def main():
         amqp_url=amqp_url,
         transport_settings=transport_settings,
     )
-    await mesh_api.start()
+    await mesh_api.connect()
 
     try:
         logging.info("Service %s ready", service_instance._service_name)
