@@ -63,7 +63,7 @@ from nuropb.contexts.context_manager_decorator import nuropb_context
 from nuropb.contexts.describe import publish_to_mesh
 from nuropb.rmq_api import RMQAPI
 
-logger = logging.getLogger("nuropb-server-basic")
+logger = logging.getLogger("nuropb-all-in-one")
 
 
 def get_claims_from_token(bearer_token: str) -> Dict[str, Any] | None:

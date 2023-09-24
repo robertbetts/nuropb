@@ -1,16 +1,22 @@
 # Roadmap Features
 
-* Service Discovery - Service Mesh
-* Self Describing Services and Service Registry
-* Service Instance Health Checks
-* Service Instance Metrics
-* NuroPb Metric Streaming
-* NuroPb Metric Dashboard
+* ~~Context Passing and Propagation~~
+* ~~Token Based Authorization~~
+* ~~End-to-end Encryption~~
+* ~~Self Describing Services~~
+* Service Discovery - Service Mesh Registry
+* Aspects of these features are available through the extensive logging and metrics from RabbitMQ
+  * Service Instance Health Checks
+  * Service Instance Metrics
+  * NuroPb Metric Streaming - other than 
+  * NuroPb Metric Dashboard
 
 ## Experimental Paradigms 
 
-* Call Again (retry v. call-again)
+* ~~Call Again (retry v. call-again)~~
 * Split (Map / Reduce)
+
+\* ~~Strike through~~ indicates that the feature is implemented and available.
 
 ### Call Again
 When a message is nacked and requeued, there is no current way to track how many

@@ -8,11 +8,12 @@ from nuropb.contexts.context_manager_decorator import nuropb_context
 from nuropb.contexts.describe import publish_to_mesh
 from nuropb.rmq_api import RMQAPI
 
-logger = logging.getLogger("nuropb-server-basic")
+logger = logging.getLogger("nuropb-all-in-one")
 
 
 def get_claims_from_token(bearer_token: str) -> Dict[str, Any] | None:
-    """ This is a stub for the required implentation of validating and decoding the bearer token
+    """ This stub is for the implementation to complete for the validation
+    and decoding of the bearer token
     """
     _ = bearer_token
     return {
@@ -45,7 +46,7 @@ class QuickExampleService:
 
 
 async def main():
-    logging.info("All in one example done")
+    logging.info("All in one example starting")
     amqp_url = "amqp://guest:guest@localhost:5672/nuropb-example"
     service_instance = QuickExampleService()
     transport_settings = {
