@@ -74,18 +74,8 @@ async def main():
     amqp_url = "amqp://guest:guest@localhost:5672/nuropb-example"
     api = RMQAPI(
         amqp_url=amqp_url,
-        transport_settings={
-            "prefetch_count": 1,
-        }
     )
     await api.connect()
-
-    total_seconds = 0
-    total_sample_count = 0
-
-    batch_size = 100
-    number_of_batches = 1
-    ioloop = asyncio.get_event_loop()
 
     """ This first service mesh call, is to describe the service api and to determine whether
     the service has encrypted methods.
@@ -94,22 +84,36 @@ async def main():
     describe_info = await api.describe_service(service)
     encrypted_methods = describe_info["encrypted_methods"]
     has_public_key = await api.has_public_key(service)
-    logger.info(f"service {service} has encrypted methods that require encryption: {encrypted_methods}")
+    logger.info(f"service {service} has encrypted methods requiring encryption: {encrypted_methods}")
     logger.info(f"service {service} supports general encryption: {has_public_key}")
+
     encryption_test = False
+    logger.info(f"performing encrypted requests: {encryption_test}")
 
     """ Perform a number of service mesh calls, commands and events
     Each of the three blocks below in each iteration of the loop, the individual tasks are 
     performed asynchronously
     """
+    total_seconds = 0
+    total_sample_count = 0
+    total_request_time = 0
+
+    batch_size = 500
+    number_of_batches = 5
+    ioloop = asyncio.get_event_loop()
+
     for _ in range(number_of_batches):
         start_time = datetime.datetime.utcnow()
         logger.info(f"Starting: {batch_size} at {start_time}")
 
         loop_batch_size = 0
         logger.info("Waiting for %s requests to complete", batch_size)
+        rr_start_time = datetime.datetime.utcnow()
         tasks = [ioloop.create_task(perform_request(api, encryption_test)) for _ in range(batch_size)]
         result = await asyncio.wait(tasks)
+        rr_taken = (datetime.datetime.utcnow() - rr_start_time).total_seconds()
+        total_request_time += rr_taken
+        logger.info("the request batch of %s calls took %s seconds and %s calls/s", batch_size, rr_taken, batch_size / rr_taken)
         # logger.info(f"Request complete: {result[0]}")
         loop_batch_size += batch_size
 
@@ -130,10 +134,15 @@ async def main():
         total_sample_count += loop_batch_size
 
     logger.info(
-        "Client performed a total of %s calls in %s @ %s",
+        "Client mixed performance: %s total calls in %s seconds @ %s calls/s",
         total_sample_count,
         total_seconds,
         total_sample_count / total_seconds,
+    )
+    total_rr_count = batch_size * number_of_batches
+    logger.info(
+        "Request only performance: %s total calls in %s seconds @ %s calls/s",
+        total_rr_count, total_request_time, total_rr_count / total_request_time
     )
     logging.info("Client Done")
 
