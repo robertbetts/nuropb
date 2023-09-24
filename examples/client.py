@@ -6,18 +6,26 @@ from uuid import uuid4
 from nuropb.rmq_api import RMQAPI
 
 
-logger = logging.getLogger("client")
+logger = logging.getLogger("nuropb-client")
 
 
-async def make_request(api: RMQAPI):
-    service = "sandbox"
-    # method = "test_method"
-    method = "test_encrypt_method"
+async def perform_request(api: RMQAPI, encryption_test: bool = False):
+    service = "test_service"
+    if encryption_test:
+        method = "test_encrypt_method"
+    else:
+        method = "test_method"
     params = {"param1": "value1"}
     context = {"context1": "value1"}
     ttl = 60 * 30 * 1000
     trace_id = uuid4().hex
+
+    """ Some service methods can be declared as requiring encryption always. When a service provides 
+    a public key with its service description, then all methods are have optional encryption. The 
+    example here, does a check whether the method requires encryption or not.
+    """
     encrypted = await api.requires_encryption(service, method)
+
     response = await api.request(
         service=service,
         method=method,
@@ -30,8 +38,8 @@ async def make_request(api: RMQAPI):
     return response == f"response from {service}.{method}"
 
 
-async def make_command(api: RMQAPI):
-    service = "sandbox"
+async def perform_command(api: RMQAPI):
+    service = "test_service"
     method = "test_method"
     params = {"param1": "value1"}
     context = {"context1": "value1"}
@@ -63,7 +71,7 @@ async def publish_event(api: RMQAPI):
 
 
 async def main():
-    amqp_url = "amqp://guest:guest@127.0.0.1:5672/sandbox"
+    amqp_url = "amqp://guest:guest@localhost:5672/nuropb-example"
     api = RMQAPI(
         amqp_url=amqp_url,
         transport_settings={
@@ -75,50 +83,58 @@ async def main():
     total_seconds = 0
     total_sample_count = 0
 
-    batch_size = 10000
-    number_of_batches = 5
+    batch_size = 100
+    number_of_batches = 1
     ioloop = asyncio.get_event_loop()
 
-    service = "sandbox"
-    method = "test_method"
-    encrypted = await api.requires_encryption(service, method)
-    logger.info(f"encryption is : {encrypted}")
+    """ This first service mesh call, is to describe the service api and to determine whether
+    the service has encrypted methods.
+    """
+    service = "test_service"
+    describe_info = await api.describe_service(service)
+    encrypted_methods = describe_info["encrypted_methods"]
+    has_public_key = await api.has_public_key(service)
+    logger.info(f"service {service} has encrypted methods that require encryption: {encrypted_methods}")
+    logger.info(f"service {service} supports general encryption: {has_public_key}")
+    encryption_test = False
 
+    """ Perform a number of service mesh calls, commands and events
+    Each of the three blocks below in each iteration of the loop, the individual tasks are 
+    performed asynchronously
+    """
     for _ in range(number_of_batches):
         start_time = datetime.datetime.utcnow()
         logger.info(f"Starting: {batch_size} at {start_time}")
 
         loop_batch_size = 0
-        tasks = [ioloop.create_task(make_request(api)) for _ in range(batch_size)]
-        logger.info("Waiting for request tasks to complete")
+        logger.info("Waiting for %s requests to complete", batch_size)
+        tasks = [ioloop.create_task(perform_request(api, encryption_test)) for _ in range(batch_size)]
         result = await asyncio.wait(tasks)
-        loop_batch_size += batch_size
         # logger.info(f"Request complete: {result[0]}")
+        loop_batch_size += batch_size
 
-        # tasks = [ioloop.create_task(make_command(api)) for _ in range(batch_size)]
-        # logger.info("Waiting for command tasks to complete")
-        # await asyncio.wait(tasks)
-        # loop_batch_size += batch_size
+        logger.info("Waiting for %s commands to execute", batch_size)
+        tasks = [ioloop.create_task(perform_command(api)) for _ in range(batch_size)]
+        await asyncio.wait(tasks)
+        loop_batch_size += batch_size
 
-        # tasks = [ioloop.create_task(publish_event(api)) for _ in range(batch_size)]
-        # logger.info("Waiting for publish tasks to complete")
-        # await asyncio.wait(tasks)
-        # loop_batch_size += batch_size
+        logger.info("Waiting for %s events to publish")
+        tasks = [ioloop.create_task(publish_event(api)) for _ in range(batch_size)]
+        await asyncio.wait(tasks)
+        loop_batch_size += batch_size
 
         end_time = datetime.datetime.utcnow()
         time_taken = end_time - start_time
-        logger.info(f"Completed: {batch_size} at {end_time} in {time_taken}")
+        logger.info(f"Completed {batch_size * 3} calls to the service mesh in {time_taken}")
         total_seconds += time_taken.total_seconds()
         total_sample_count += loop_batch_size
 
     logger.info(
-        "Client Done: %s in %s -> %s",
+        "Client performed a total of %s calls in %s @ %s",
         total_sample_count,
         total_seconds,
         total_sample_count / total_seconds,
     )
-    # fut = asyncio.Future()
-    # await fut
     logging.info("Client Done")
 
 
@@ -128,5 +144,6 @@ if __name__ == "__main__":
         "-35s %(lineno) -5d: %(message)s"
     )
     logging.basicConfig(level=logging.INFO, format=log_format)
-    logging.getLogger("pika").setLevel(logging.WARNING)
+    logging.getLogger("pika").setLevel(logging.CRITICAL)
+    logging.getLogger("nuropb").setLevel(logging.WARNING)
     asyncio.run(main())
