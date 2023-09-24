@@ -13,7 +13,7 @@ Concepts demonstrated in this example are:
 * Using etcd to for service leader election and coordinated configuration for a new service mesh for example
   when spinning up a new cluster of services that not every service instance is attempting to concurrently 
   configure RabbitMQ, or other service infrastructure configurations.
-* ectd is disabled by default in the `examples/server.py` example, but can be enabled by setting the 
+* etcd is disabled by default in the `examples/server.py` example, but can be enabled by setting the 
   `enable_etcd_usage` variable to `True`
 * Various Python asyncio concepts and examples
 
