@@ -15,34 +15,152 @@ You have a Python class that you want to make available as a service to consumer
 * A growing army of MlOps and Datascience engineers are joining, and they need to be able to integrate their 
   work into your systems.
 
-If any of these are of interest to you then NuroPb is worth considering. NuroPb It falls into the domain of other 
-tools and frameworks that abstract the plumbing and allow software engineers to focus on the problems they're hired 
-to solve.
+If any of these are of interest to you then NuroPb is worth considering. NuroPb It falls into the domain of  
+tools and frameworks for the abstraction of integration plumbing, and enabling software engineers to focus on the 
+problems they're hired to solve.
 
-First and foremost NuroPb is a pattern and approach for an event driven and service mesh requirements. It's early 
-roots developed in the 2000's and during the 2010's was used to drive hedge funds, startups, banks and crypto and 
-blockchain businesses. It's core development is python, but it's been used with other languages too. Anything that 
-can talk to RabbitMQ can be used with NuroPb.
+**Where does the name originate from?** NuroPb is a contraction of the word neural and the scientific symbol for Lead. Lead
+associated with plumbing. So NuroPb is a system's neural plumbing framework.
 
-RabbitMQ is the underlying message broker for the core of NuroPb. Various message brokers and broker-less 
-tools and approaches have been tried, some of these are Kafka, MQSeries and ZeroMQ. RabbitMQ's AMPQ routing 
-capabilities, low maintenance and robustness have proved the test of time. Now with the streams feature, and
-and one able to navigate message logs, provides a powerful tool for debugging and monitoring.
+**NuroPb is a pattern and approach** that supports event driven and service mesh engineering requirements. The
+early roots evolved in the 2000's, and during the 2010's the pattern was used to drive hedge funds, startups, 
+banks and crypto and blockchain ventures. It's core development is in Python, and the pattern has been used
+alongside Java, JavasScript and GoLang, Unfortunately those efforts are copyrighted. Any platform with support
+for RabbitMQ should be able to implement the pattern and exist on the same mesh as Python Services.
 
-Why not focus on Kafka? Kafka is a great tool, but it's not a message broker. It's a distributed log and 
-probably the best one out there. Where like many use cases where NuroPb on RabbitMQ would play very nicely side 
-by side with Kafka. With interprocess rpc and event driven processes and flows, orchestrated with NeroPb/RabbitMQ
-and ordered event streaming over Kafka. Kafka has also proved a great tool for auditing and logging of NuroPB 
-messages.
+RabbitMQ is the underlying message broker for the NuroPb service mesh library. Various message brokers and 
+broker-less tools and approaches have been tried with the nuropb pattern. Some of these are Kafka, MQSeries and 
+ZeroMQ. RabbitMQ's AMPQ routing capabilities, low maintenance and robustness have proved the test of time. With 
+RabbitMQ's release of the streams feature, and offering message/logs streaming capabilities, there are new 
+and interesting opportunities all on a single platform.
 
-Where does the name come from? NuroPb is a contraction of the word neural and the scientific symbol for Lead. Lead
-associated with plumbing. So NuroPb is a system's neural plumbing framework. 
+**Why not Kafka**? Kafka is a great tool, but it's not a message broker. It's a distributed log stream and 
+probably one of the best available. There are many use cases where NuroPb + RabbitMQ would integrate very 
+nicely alongside Kafka. Especially inter-process rpc and orderless event driven flows that are orchestrated 
+by NuroPb and ordered log/event streaming over Kafka. Kafka is also been used as to ingest all nuropb traffic
+for auditing and tracing.
 
 ## Getting started
-Install the Python package
+The best way to get started is to look at the examples and the `examples/README.md` file. 
+
+As a super quick reference this si what you need to get started:
+* Python >= 3.10
+* RabbitMQ >= 3.8.0 + Management Plugin
+* `pip install nuropb`
+
+This code block is an example of a client and server running in the same python file. 
+```python
+import logging
+from typing import Any, Dict
+from uuid import uuid4
+import asyncio
+
+from nuropb.contexts.context_manager import NuropbContextManager
+from nuropb.contexts.context_manager_decorator import nuropb_context
+from nuropb.contexts.describe import publish_to_mesh
+from nuropb.rmq_api import RMQAPI
+
+logger = logging.getLogger("nuropb-server-basic")
+
+
+def get_claims_from_token(bearer_token: str) -> Dict[str, Any] | None:
+    """ This is a stub for the required implentation of validating and decoding the bearer token
+    """
+    _ = bearer_token
+    return {
+        "sub": "test_user",
+        "user_id": "test_user",
+        "scope": "openid, profile",
+        "roles": "user, admin",
+    }
+
+
+class QuickExampleService:
+    _service_name = "quick-example"
+    _instance_id = uuid4().hex
+
+    @nuropb_context
+    @publish_to_mesh(authorise_func=get_claims_from_token)
+    def test_requires_user_claims(self, ctx, **kwargs: Any) -> str:
+        logger.info("test_requires_user_claims called")
+        assert isinstance(ctx, NuropbContextManager)
+        return f"hello {ctx.user_claims['user_id']}"
+
+    def test_method(self, param1, param2: Dict[str, Any]) -> Dict[str, Any]:
+        logger.info("test_method called")
+        _ = self
+        return {
+            "param1": param1,
+            "param2": param2,
+            "reply": "response from test_method",
+        }
+
+
+async def main():
+    logging.info("All in one example done")
+    amqp_url = "amqp://guest:guest@localhost:5672/nuropb-example"
+    service_instance = QuickExampleService()
+    transport_settings = {
+        "rpc_bindings": [service_instance._service_name],
+    }
+    service_api = RMQAPI(
+        service_instance=service_instance,
+        service_name=service_instance._service_name,
+        instance_id=service_instance._instance_id,
+        amqp_url=amqp_url,
+        transport_settings=transport_settings,
+    )
+    await service_api.connect()
+    logger.info("Service Ready")
+
+    client_api = RMQAPI(
+        amqp_url=amqp_url,
+    )
+    await client_api.connect()
+    logger.info("Client connected")
+
+    context = {
+        "Authorization": "Bearer 1234567890",
+    }
+    response = await client_api.request(
+        service="quick-example",
+        method="test_requires_user_claims",
+        params={},
+        context=context,
+    )
+    logger.info(f"Response: {response}")
+
+    response = await client_api.request(
+        service="quick-example",
+        method="test_method",
+        params={
+            "param1": "value1",
+            "param2": {
+                "param2a": "value2a",
+            }
+        },
+        context={},
+    )
+    logger.info(f"Response: {response}")
+
+    await client_api.disconnect()
+    await service_api.disconnect()
+
+    logging.info("All in one example done")
+
+
+if __name__ == "__main__":
+    log_format = (
+        "%(levelname).1s %(asctime)s %(name) -25s %(funcName) "
+        "-35s %(lineno) -5d: %(message)s"
+    )
+    logging.basicConfig(level=logging.INFO, format=log_format)
+    logging.getLogger("pika").setLevel(logging.WARNING)
+    logging.getLogger("etcd3").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    asyncio.run(main())
 ```
-pip install nuropb
-```
+
 
 
 
