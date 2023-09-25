@@ -1,13 +1,15 @@
 """ RabbitMQ Utility library for NuroPb
 """
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 from urllib.parse import urlparse
 from contextlib import contextmanager
+import ssl
 
 import requests
 import pika
 from pika.channel import Channel
+from pika.credentials import PlainCredentials
 
 from nuropb.interface import PayloadDict, NuropbTransportError
 
@@ -48,6 +50,57 @@ def rmq_api_url_from_amqp_url(
     return build_rmq_api_url(scheme, host, port, username, password)
 
 
+def get_connection_parameters(amqp_url: str | Dict[str, Any]) -> pika.ConnectionParameters | pika.URLParameters:
+    """Return the connection parameters for the transport"""
+    if isinstance(amqp_url, dict):
+        # create TLS connection parameters
+        cafile = amqp_url.get("cafile", None)
+        if cafile:  # pragma: no cover
+            context = ssl.create_default_context(
+                cafile=cafile,
+            )
+        else:
+            context = ssl.create_default_context()
+
+        if amqp_url.get("certfile"):
+            context.load_cert_chain(
+                certfile=amqp_url.get("certfile"),
+                keyfile=amqp_url.get("keyfile")
+            )
+
+        if amqp_url.get("verify", True) is False:
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+        else:
+            context.check_hostname = True
+            context.verify_mode = ssl.CERT_REQUIRED
+
+        if amqp_url.get("username", None):
+            credentials = PlainCredentials(amqp_url["username"], amqp_url["password"])
+        else:
+            credentials = None
+
+        host = amqp_url.get("host", None)
+        port = amqp_url.get("port", None)
+        vhost = amqp_url.get("vhost", "/")
+        ssl_options = pika.SSLOptions(
+            context=context,
+            server_hostname=host
+        )
+        conn_params = pika.ConnectionParameters(
+            host=host,
+            port=port,
+            virtual_host=vhost,
+            credentials=credentials,
+            ssl_options=ssl_options
+        )
+        return conn_params
+
+    else:
+        # create connection parameters from amqp_url alone
+        return pika.URLParameters(amqp_url)
+
+
 def management_api_session_info(
     scheme: str,
     host: str,
@@ -82,11 +135,11 @@ def management_api_session_info(
 
 
 @contextmanager
-def blocking_rabbitmq_channel(rmq_url: str) -> pika.channel.Channel:
+def blocking_rabbitmq_channel(rmq_url: str | Dict[str, Any]) -> pika.channel.Channel:
     """Useful for initialisation of queues / exchanges."""
     connection = None
     try:
-        parameters = pika.URLParameters(rmq_url)
+        parameters = get_connection_parameters(rmq_url)
         connection = pika.BlockingConnection(parameters)
         channel = connection.channel()
         yield channel
@@ -101,15 +154,11 @@ def blocking_rabbitmq_channel(rmq_url: str) -> pika.channel.Channel:
 
 
 def configure_nuropb_rmq(
-    service_name: str,
-    rmq_url: str,
+    rmq_url: str | Dict[str, Any],
     events_exchange: str,
     rpc_exchange: str,
     dl_exchange: str,
     dl_queue: str,
-    service_queue: str,
-    rpc_bindings: List[str],
-    event_bindings: List[str],
     **kwargs: Any,
 ) -> bool:
     """Configure the RabbitMQ broker for this transport.
@@ -149,15 +198,11 @@ def configure_nuropb_rmq(
     - named instances of a service each with their own persistent response queue
     - Notification and handling of dead letter messages relating to a service
 
-    :param str service_name: The name of the service, being configured for
     :param str rmq_url: The URL of the RabbitMQ broker
     :param str events_exchange: The name of the events exchange
     :param str rpc_exchange: The name of the RPC exchange
     :param str dl_exchange: The name of the dead letter exchange
     :param str dl_queue: The name of the dead letter queue
-    :param str service_queue: The name of the requests queue
-    :param List[str] rpc_bindings: The list of RPC bindings
-    :param List[str] event_bindings: The list of events bindings
     :param kwargs: Additional keyword argument overflow from the transport settings.
         - client_only: bool - True if this is a client only service, False otherwise
     :return: True if the RabbitMQ broker was configured successfully
@@ -165,9 +210,6 @@ def configure_nuropb_rmq(
     if kwargs.get("client_only", False):
         logger.info("Client only service, not configuring RMQ")
         return True
-
-    if len(rpc_bindings) == 0 or service_name not in rpc_bindings:
-        rpc_bindings.append(service_name)
 
     with blocking_rabbitmq_channel(rmq_url) as channel:
         logger.info(f"Declaring the dead letter exchange: {dl_exchange}")
@@ -199,37 +241,6 @@ def configure_nuropb_rmq(
             exchange_type="direct",
             durable=True,
         )
-        logger.info(
-            f"Declaring the request queue: {service_queue} to the rpc exchange: {rpc_exchange}"
-        )
-        requests_queue_config = {
-            "durable": True,
-            "auto_delete": False,
-            "arguments": {"x-dead-letter-exchange": dl_exchange},
-        }
-        channel.queue_declare(queue=service_queue, **requests_queue_config)
-
-        """ This NOTE is here for reference only. A response queue is not durable by default
-        and is the responsibility of the client/service follower to declare on startup. 
-        As the response queue is not durable, it is auto-deleted when the connection is closed. 
-        This is because the response queue is only used for RPC responses, and we don't want to 
-        keep stale responses around. See the notes above about etcd leader/follower configuration
-        for more information.
-        
-        responses_queue_config = {"durable": False, "auto_delete": True}
-        """
-
-        """ Any new bindings will be registered here, however, previous bindings will not be removed.
-            PLEASE TAKE NOTE, especially in the context of event bindings, this could lead to a lot of
-            unnecessary traffic and debugging support issues.
-        """
-        for routing_key in rpc_bindings:
-            logger.info("binding to {}".format(routing_key))
-            channel.queue_bind(service_queue, rpc_exchange, routing_key)
-
-        for routing_key in event_bindings:
-            logger.info("binding to {}".format(routing_key))
-            channel.queue_bind(service_queue, events_exchange, routing_key)
 
         rabbitmq_configured = True
 
@@ -321,7 +332,7 @@ def get_virtual_host_queues(api_url: str, vhost_url: str) -> Any | None:
         return response.json()
 
 
-def get_virtual_hosts(api_url: str, vhost_url: str) -> Any | None:
+def get_virtual_hosts(api_url: str, vhost_url: str | Dict[str, Any]) -> Any | None:
     """Creates a virtual host on the RabbitMQ server using the REST API
     :param api_url: the url to the RabbitMQ API
     :param vhost_url: the virtual host to create
@@ -343,15 +354,18 @@ def get_virtual_hosts(api_url: str, vhost_url: str) -> Any | None:
         return response.json()
 
 
-def create_virtual_host(api_url: str, vhost_url: str) -> None:
+def create_virtual_host(api_url: str, vhost_url: str | Dict[str, Any]) -> None:
     """Creates a virtual host on the RabbitMQ server using the REST API
     :param api_url: the url to the RabbitMQ API
     :param vhost_url: the virtual host to create
 
     :return: None
     """
-    url_parts = urlparse(vhost_url)
-    vhost = url_parts.path[1:] if url_parts.path.startswith("/") else url_parts.path
+    if isinstance(vhost_url, dict):
+        vhost = vhost_url["vhost"]
+    else:
+        url_parts = urlparse(vhost_url)
+        vhost = url_parts.path[1:] if url_parts.path.startswith("/") else url_parts.path
 
     vhost_data = get_virtual_hosts(api_url, vhost_url)
     vhost_exists = False
@@ -376,15 +390,18 @@ def create_virtual_host(api_url: str, vhost_url: str) -> None:
     response.raise_for_status()
 
 
-def delete_virtual_host(api_url: str, vhost_url: str) -> None:
+def delete_virtual_host(api_url: str, vhost_url: str | Dict[str, Any]) -> None:
     """Deletes a virtual host on the RabbitMQ server using the REST API
     :param api_url: the url to the RabbitMQ API
     :param vhost_url: the virtual host to delete
 
     :return: None
     """
-    url_parts = urlparse(vhost_url)
-    vhost = url_parts.path[1:] if url_parts.path.startswith("/") else url_parts.path
+    if isinstance(vhost_url, dict):
+        vhost = vhost_url["vhost"]
+    else:
+        url_parts = urlparse(vhost_url)
+        vhost = url_parts.path[1:] if url_parts.path.startswith("/") else url_parts.path
 
     vhost_data = get_virtual_hosts(api_url, vhost_url)
     vhost_exists = False

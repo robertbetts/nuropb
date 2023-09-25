@@ -19,6 +19,8 @@ from nuropb.testing.stubs import ServiceExample
 
 logging.getLogger("pika").setLevel(logging.WARNING)
 
+IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
+
 
 @pytest.fixture(scope="session")
 def test_settings():
@@ -61,13 +63,25 @@ def test_settings():
 def test_rmq_url(test_settings):
     logging.debug("Setting up RabbitMQ test instance")
     vhost = f"pytest-{secrets.token_hex(8)}"
-    rmq_url = build_amqp_url(
-        host=test_settings["host"],
-        port=test_settings["port"],
-        username=test_settings["username"],
-        password=test_settings["password"],
-        vhost=vhost,
-    )
+    if IN_GITHUB_ACTIONS:
+        rmq_url = build_amqp_url(
+            host=test_settings["host"],
+            port=test_settings["port"],
+            username=test_settings["username"],
+            password=test_settings["password"],
+            vhost=vhost,
+        )
+    else:
+        rmq_url = {
+            "cafile": "tls_connection/ca_cert.pem",
+            "username": "guest",
+            "password": "guest",
+            "host": "localhost",
+            "port": 5671,
+            "vhost": vhost,
+            "verify": False,
+        }
+
     api_url = build_rmq_api_url(
         scheme=test_settings["api_scheme"],
         host=test_settings["host"],
@@ -97,15 +111,11 @@ def test_rmq_url(test_settings):
     transport = RMQTransport(**transport_settings)
 
     configure_nuropb_rmq(
-        service_name=transport.service_name,
         rmq_url=rmq_url,
         events_exchange=transport.events_exchange,
         rpc_exchange=transport.rpc_exchange,
         dl_exchange=transport._dl_exchange,
         dl_queue=transport._dl_queue,
-        service_queue=transport._service_queue,
-        rpc_bindings=list(transport._rpc_bindings),
-        event_bindings=list(transport._event_bindings),
     )
     yield rmq_url
     logging.debug("Shutting down RabbitMQ test instance")
@@ -152,15 +162,11 @@ def test_rmq_url_static(test_settings):
     transport = RMQTransport(**transport_settings)
 
     configure_nuropb_rmq(
-        service_name=transport.service_name,
         rmq_url=rmq_url,
         events_exchange=transport.events_exchange,
         rpc_exchange=transport.rpc_exchange,
         dl_exchange=transport._dl_exchange,
         dl_queue=transport._dl_queue,
-        service_queue=transport._service_queue,
-        rpc_bindings=list(transport._rpc_bindings),
-        event_bindings=list(transport._event_bindings),
     )
     yield rmq_url
     # logging.debug("Shutting down RabbitMQ test instance")

@@ -30,7 +30,7 @@ from nuropb.interface import (
 from nuropb.rmq_lib import (
     rmq_api_url_from_amqp_url,
     create_virtual_host,
-    configure_nuropb_rmq,
+    configure_nuropb_rmq, get_connection_parameters,
 )
 from nuropb import service_handlers
 from nuropb.service_handlers import (
@@ -130,10 +130,9 @@ class RMQTransport:
     commands that were issued and that should surface in the output as well.
 
     """
-
     _service_name: str
     _instance_id: str
-    _amqp_url: str
+    _amqp_url: str | Dict[str, Any]
     _rpc_exchange: str
     _events_exchange: str
     _dl_exchange: str
@@ -167,41 +166,43 @@ class RMQTransport:
         self,
         service_name: str,
         instance_id: str,
-        amqp_url: str,
+        amqp_url: str | Dict[str, Any],
         message_callback: MessageCallbackFunction,
-        rpc_exchange: Optional[str] = None,
-        events_exchange: Optional[str] = None,
-        dl_exchange: Optional[str] = None,
-        dl_queue: Optional[str] = None,
-        service_queue: Optional[str] = None,
-        response_queue: Optional[str] = None,
-        rpc_bindings: Optional[List[str] | Set[str]] = None,
-        event_bindings: Optional[List[str] | Set[str]] = None,
-        prefetch_count: Optional[int] = None,
         default_ttl: Optional[int] = None,
         client_only: Optional[bool] = None,
         encryptor: Optional[Encryptor] = None,
-    ):  # NOSONAR
+        **kwargs: Any,
+    ):
         """Create a new instance of the consumer class, passing in the AMQP
         URL used to connect to RabbitMQ.
 
         :param str service_name: The name of the service
         :param str instance_id: The instance id of the service
-        :param str amqp_url: The AMQP url to connect with
+        :param str amqp_url: The AMQP url to connect string or TLS connection details
+            - cafile: str | None
+            - certfile: str | None
+            - keyfile: str | None
+            - verify: bool (default True)
+            - hostname: str
+            - port: int
+            - username: str
+            - password: str
         :param MessageCallbackFunction message_callback: The callback to call when a message is received
-        :param str rpc_exchange: The name of the RPC exchange
-        :param str events_exchange: The name of the events exchange
-        :param str dl_exchange: The name of the dead letter exchange
-        :param str dl_queue: The name of the dead letter queue
-        :param str service_queue: The name of the requests queue
-        :param str response_queue: The name of the responses queue
-        :param List[str] rpc_bindings: The list of RPC bindings
-        :param List[str] event_bindings: The list of events bindings
-        :param int prefetch_count: The number of messages to prefetch defaults to 1, unlimited is 0.
-                Experiment with larger values for higher throughput in your user case.
         :param int default_ttl: The default time to live for messages in milliseconds, defaults to 12 hours.
         :param bool client_only:
         :param Encryptor encryptor: The encryptor to use for encrypting and decrypting messages
+        :param kwargs: Mostly transport configuration options
+            - str rpc_exchange: The name of the RPC exchange
+            - str events_exchange: The name of the events exchange
+            - str dl_exchange: The name of the dead letter exchange
+            - str dl_queue: The name of the dead letter queue
+            - str service_queue: The name of the requests queue
+            - str response_queue: The name of the responses queue
+            - List[str] rpc_bindings: The list of RPC bindings
+            - List[str] event_bindings: The list of events bindings
+            - int prefetch_count: The number of messages to prefetch defaults to 1, unlimited is 0.
+                    Experiment with larger values for higher throughput in your user case.
+
         """
         self._connected = False
         self._closing = False
@@ -217,10 +218,12 @@ class RMQTransport:
         """ If client_only is True, then the transport will not configure a service queue with
         the handling of requests, commands and events disabled. 
         """
+        rpc_bindings = set(kwargs.get("rpc_bindings", []) or [])
+        event_bindings = set(kwargs.get("event_bindings", []) or [])
         if self._client_only:
             logger.info("Client only transport")
-            rpc_bindings = []
-            event_bindings = []
+            rpc_bindings = set()
+            event_bindings = set()
 
         self._encryptor = encryptor
 
@@ -228,18 +231,18 @@ class RMQTransport:
         self._service_name = service_name
         self._instance_id = instance_id
         self._amqp_url = amqp_url
-        self._rpc_exchange = rpc_exchange or "nuropb-rpc-exchange"
-        self._events_exchange = events_exchange or "nuropb-events-exchange"
-        self._dl_exchange = dl_exchange or "nuropb-dl-exchange"
-        self._dl_queue = dl_queue or f"nuropb-{self._service_name}-dl"
-        self._service_queue = service_queue or f"nuropb-{self._service_name}-sq"
+        self._rpc_exchange = kwargs.get("rpc_exchange", None) or "nuropb-rpc-exchange"
+        self._events_exchange = kwargs.get("events_exchange", None) or "nuropb-events-exchange"
+        self._dl_exchange = kwargs.get("dl_exchange", None) or "nuropb-dl-exchange"
+        self._dl_queue = kwargs.get("dl_queue", None) or f"nuropb-{self._service_name}-dl"
+        self._service_queue = kwargs.get("service_queue", None) or f"nuropb-{self._service_name}-sq"
         self._response_queue = (
-            response_queue
-            or f"nuropb-{self._service_name}-{self._instance_id}-response"
+                kwargs.get("response_queue", None)
+                or f"nuropb-{self._service_name}-{self._instance_id}-response"
         )
-        self._rpc_bindings = set(rpc_bindings or [])
-        self._event_bindings = set(event_bindings or [])
-        self._prefetch_count = 1 if prefetch_count is None else prefetch_count
+        self._rpc_bindings = rpc_bindings
+        self._event_bindings = event_bindings
+        self._prefetch_count = 1 if kwargs.get("prefetch_count", None) is None else kwargs.get("prefetch_count", 1)
         self._default_ttl = default_ttl or 60 * 60 * 1000 * 12  # 12 hours
         self._message_callback = message_callback
         self._rpc_bindings.add(self._service_name)
@@ -259,7 +262,7 @@ class RMQTransport:
         return self._instance_id
 
     @property
-    def amqp_url(self) -> str:
+    def amqp_url(self) -> str | Dict[str, Any]:
         return self._amqp_url
 
     @property
@@ -320,7 +323,7 @@ class RMQTransport:
     def configure_rabbitmq(
         self,
         rmq_configuration: Optional[RabbitMQConfiguration] = None,
-        amqp_url: Optional[str] = None,
+        amqp_url: Optional[str | Dict[str, Any]] = None,
         rmq_api_url: Optional[str] = None,
     ) -> None:
         """configure_rabbitmq: configure the RabbitMQ transport with the provided configuration
@@ -346,17 +349,14 @@ class RMQTransport:
         try:
             create_virtual_host(rmq_api_url, amqp_url)
             configure_nuropb_rmq(
-                service_name=self._service_name,
                 rmq_url=amqp_url,
                 events_exchange=rmq_configuration["events_exchange"],
                 rpc_exchange=rmq_configuration["rpc_exchange"],
                 dl_exchange=rmq_configuration["dl_exchange"],
                 dl_queue=rmq_configuration["dl_queue"],
-                service_queue=rmq_configuration["service_queue"],
-                rpc_bindings=rmq_configuration["rpc_bindings"],
-                event_bindings=rmq_configuration["event_bindings"],
             )
             self._is_rabbitmq_configured = True
+            time.sleep(5)
         except Exception as err:
             logger.exception(
                 f"Failed to configure RabbitMQ with the provided configuration:\n"
@@ -373,7 +373,10 @@ class RMQTransport:
         try:
             await self._connected_future
         except ProbableAccessDeniedError as err:
-            vhost = self._amqp_url.split("/")[-1]
+            if isinstance(self._amqp_url, dict):
+                vhost = self._amqp_url.get("vhost", "")
+            else:
+                vhost = self._amqp_url.split("/")[-1]
             if "ConnectionClosedByBroker: (530) 'NOT_ALLOWED - vhost" in str(err):
                 raise ServiceNotConfigured(
                     f"The NuroPb configuration is missing from RabbitMQ for the virtual host: {vhost}"
@@ -427,8 +430,9 @@ class RMQTransport:
 
         self._connected_future = asyncio.Future()
 
+        connection_parameters = get_connection_parameters(self._amqp_url)
         conn = AsyncioConnection(
-            parameters=pika.URLParameters(self._amqp_url),
+            parameters=connection_parameters,
             on_open_callback=self.on_connection_open,
             on_open_error_callback=self.on_connection_open_error,
             on_close_callback=self.on_connection_closed,
@@ -705,6 +709,7 @@ class RMQTransport:
                         self.on_service_message, self._service_queue
                     ),
                     queue=self._service_queue,
+                    exclusive=False,
                 )
             )
 

@@ -128,6 +128,7 @@ async def test_mesh_service_encrypt(test_mesh_client, test_mesh_service):
     logger.info(f"Requesting encrypted transport for request {service}.{method}")
 
     encrypted = await test_mesh_client.requires_encryption(service, method)
+    assert encrypted is True
     params = {}
     context = {
         "Authorization": "Bearer: user_token"
