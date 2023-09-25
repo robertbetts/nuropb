@@ -222,8 +222,8 @@ class RMQTransport:
         event_bindings = set(kwargs.get("event_bindings", []) or [])
         if self._client_only:
             logger.info("Client only transport")
-            rpc_bindings = []
-            event_bindings = []
+            rpc_bindings = set()
+            event_bindings = set()
 
         self._encryptor = encryptor
 
