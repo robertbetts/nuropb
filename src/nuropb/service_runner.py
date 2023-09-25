@@ -336,15 +336,11 @@ class ServiceContainer(ServiceRunner):
         create_virtual_host(self._rmq_api_url, amqp_url)
         transport_settings = self._transport.rmq_configuration
         configure_nuropb_rmq(
-            service_name=self._service_name,
             rmq_url=amqp_url,
             events_exchange=transport_settings["events_exchange"],
             rpc_exchange=transport_settings["rpc_exchange"],
             dl_exchange=transport_settings["dl_exchange"],
             dl_queue=transport_settings["dl_queue"],
-            service_queue=transport_settings["service_queue"],
-            rpc_bindings=transport_settings["rpc_bindings"],
-            event_bindings=transport_settings["event_bindings"],
         )
         self._rmq_config_ok = True
 
@@ -424,8 +420,7 @@ class ServiceContainer(ServiceRunner):
                 logger.info(f"container running future cancelled: {err}")
             else:
                 logger.exception(f"Container running future runtime exception: {err}")
-        finally:
-            return started
+        return started
 
     async def stop(self) -> None:
         """stop: stops the container service instance.

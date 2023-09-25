@@ -44,7 +44,7 @@ class RMQAPI(NuropbInterface):
 
     def __init__(
         self,
-        amqp_url: str,
+        amqp_url: str | Dict[str, Any],
         service_name: str | None = None,
         instance_id: str | None = None,
         service_instance: object | None = None,
@@ -53,10 +53,14 @@ class RMQAPI(NuropbInterface):
         transport_settings: Optional[Dict[str, Any]] = None,
     ):
         """RMQAPI: A NuropbInterface implementation that uses RabbitMQ as the underlying transport."""
-        parts = amqp_url.split("/")
-        vhost = amqp_url.split("/")[-1]
-        if len(parts) < 4:
-            raise ValueError("Invalid amqp_url, missing vhost")
+        if isinstance(amqp_url, str):
+            parts = amqp_url.split("/")
+            vhost = amqp_url.split("/")[-1]
+            if len(parts) < 4:
+                raise ValueError("Invalid amqp_url, missing vhost")
+        else:
+            vhost = amqp_url["vhost"]
+
         self._mesh_name = vhost
 
         """ If a service_name is not provided, then the service is a client only and will not be able 
@@ -219,7 +223,9 @@ class RMQAPI(NuropbInterface):
         """ The logic below is only relevant for incoming service messages
         """
         if self._service_instance is None:
-            error_description = f"No service instance configured to handle the {service_message['nuropb_type']} instruction"
+            error_description = (
+                f"No service instance configured to handle the {service_message['nuropb_type']} instruction"
+            )
             logger.warning(error_description)
             response = NuropbHandlingError(
                 description=error_description,
@@ -424,12 +430,12 @@ class RMQAPI(NuropbInterface):
         :param topic: str, The routing key on the events exchange
         :param event: json-encodable Python Dict.
         :param context: dict, The context around gent generation, example content includes:
-                - user_id: str  # a unique user identifier or token of the user that made the request
-                - correlation_id: str  # a unique identifier of the request used to correlate the response
+                - str user_id:  # a unique user identifier or token of the user that made the request
+                - str correlation_id:  # a unique identifier of the request used to correlate the response
                                        # to the request
                                        # or trace the request over the network (e.g. an uuid4 hex string)
-                - service: str
-                - method: str
+                - str service:
+                - str method:
         :param trace_id: str optional
             an identifier to trace the request over the network (e.g. an uuid4 hex string)
         :param encrypted: bool, if True then the message will be encrypted in transit
@@ -502,8 +508,8 @@ class RMQAPI(NuropbInterface):
         and returns True if encryption is required else False.
         none of encryption is not required.
 
-        :param service_name: str
-        :param method_name: str
+        :param service_name:
+        :param method_name:
         :return: bool
         """
         service_info = await self.describe_service(service_name)

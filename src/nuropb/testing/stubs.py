@@ -65,7 +65,7 @@ class ServiceExample:
         return ctx.user_claims
 
     @nuropb_context
-    @publish_to_mesh(authorise_func=get_claims_from_token)
+    @publish_to_mesh(authorise_func=get_claims_from_token, requires_encryption=True)
     def test_requires_encryption(self, ctx, **kwargs: Any) -> Any:
         assert isinstance(self, ServiceExample)
         assert isinstance(ctx, NuropbContextManager)

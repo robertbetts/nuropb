@@ -37,15 +37,11 @@ async def main():
     create_virtual_host(rmq_api_url, amqp_url)
     transport_settings = api.transport.rmq_configuration
     configure_nuropb_rmq(
-        service_name=service_instance._service_name,  # pragma: no cover
         rmq_url=amqp_url,
         events_exchange=transport_settings["events_exchange"],
         rpc_exchange=transport_settings["rpc_exchange"],
         dl_exchange=transport_settings["dl_exchange"],
         dl_queue=transport_settings["dl_queue"],
-        service_queue=transport_settings["service_queue"],
-        rpc_bindings=transport_settings["rpc_bindings"],
-        event_bindings=transport_settings["event_bindings"],
     )
 
 

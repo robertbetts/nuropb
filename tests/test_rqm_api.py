@@ -15,7 +15,11 @@ def test_rmq_preparation(test_settings, test_rmq_url, test_api_url):
     - create virtual host must be idempotent
     - delete virtual host must be idempotent
     """
-    tmp_url = f"{test_rmq_url}-{secrets.token_hex(8)}"
+    if isinstance(test_rmq_url, str):
+        tmp_url = f"{test_rmq_url}-{secrets.token_hex(8)}"
+    else:
+        tmp_url = test_rmq_url.copy()
+        tmp_url["vhost"] = f"{test_rmq_url['vhost']}-{secrets.token_hex(8)}"
     create_virtual_host(test_api_url, tmp_url)
     create_virtual_host(test_api_url, tmp_url)
     delete_virtual_host(test_api_url, tmp_url)
@@ -25,11 +29,19 @@ def test_rmq_preparation(test_settings, test_rmq_url, test_api_url):
 @pytest.mark.asyncio
 async def test_instantiate_api(test_settings, test_rmq_url):
     """Test that the RMQAPI instance can be instantiated"""
-    with pytest.raises(ValueError):
-        test_url = "/".join(test_rmq_url.split("/")[:-1])
-        rmq_api = RMQAPI(
-            amqp_url=test_url,
-        )
+    if isinstance(test_rmq_url, str):
+        with pytest.raises(ValueError):
+            test_url = "/".join(test_rmq_url.split("/")[:-1])
+            rmq_api = RMQAPI(
+                amqp_url=test_url,
+            )
+    else:
+        with pytest.raises(AttributeError):
+            test_url = "/".join(test_rmq_url.split("/")[:-1])
+            rmq_api = RMQAPI(
+                amqp_url=test_url,
+            )
+
 
     rmq_api = RMQAPI(
         amqp_url=test_rmq_url,
