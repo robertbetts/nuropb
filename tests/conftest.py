@@ -19,6 +19,8 @@ from nuropb.testing.stubs import ServiceExample
 
 logging.getLogger("pika").setLevel(logging.WARNING)
 
+IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
+
 
 @pytest.fixture(scope="session")
 def test_settings():
@@ -61,7 +63,7 @@ def test_settings():
 def test_rmq_url(test_settings):
     logging.debug("Setting up RabbitMQ test instance")
     vhost = f"pytest-{secrets.token_hex(8)}"
-    if 0:
+    if IN_GITHUB_ACTIONS:
         rmq_url = build_amqp_url(
             host=test_settings["host"],
             port=test_settings["port"],
