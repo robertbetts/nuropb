@@ -3,6 +3,10 @@ import os
 import pytest
 from nuropb.rmq_transport import RMQTransport
 
+IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
+if IN_GITHUB_ACTIONS:
+    pytest.skip("Skipping model tests when run in Github Actions", allow_module_level=True)
+
 
 @pytest.mark.asyncio
 async def test_tls_connect():
