@@ -260,6 +260,21 @@ class NuropbTimeoutError(NuropbException):
 
 class NuropbTransportError(NuropbException):
     """NuropbTransportError: represents an error that inside the plumbing."""
+    _close_connection: bool
+
+    def __init__(
+            self,
+            description: Optional[str] = None,
+            payload: Optional[PayloadDict] = None,
+            exception: Optional[BaseException] = None,
+            close_connection: bool = False,
+    ):
+        super().__init__(
+            description=description,
+            payload=payload,
+            exception=exception,
+        )
+        self._close_connection = close_connection
 
 
 class NuropbMessageError(NuropbException):

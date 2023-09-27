@@ -27,7 +27,19 @@ verbose = False
 
 
 class RMQAPI(NuropbInterface):
-    """RMQAPI: A NuropbInterface implementation that uses RabbitMQ as the underlying transport."""
+    """RMQAPI: A NuropbInterface implementation that uses RabbitMQ as the underlying transport.
+
+    When an existing transport initialised and connected, and a subsequent transport
+    instance is connected with the same service_name and instance_id as the first, the broker
+    will shut down the channel of subsequent instances when they attempt to configure their
+    response queue. This is because the response queue is opened in exclusive mode. The
+    exclusive mode is used to ensure that only one consumer (nuropb api connection) is
+    consuming from the response queue.
+
+    Deliberately specifying a fixed instance_id, is a valid mechanism to ensure that a service
+    can only run in single instance mode. This is useful for services that are not designed to
+    be run in a distributed manner or where there is specific service configuration required.
+    """
 
     _mesh_name: str
     _connection_name: str
@@ -52,7 +64,11 @@ class RMQAPI(NuropbInterface):
         events_exchange: Optional[str] = None,
         transport_settings: Optional[Dict[str, Any]] = None,
     ):
-        """RMQAPI: A NuropbInterface implementation that uses RabbitMQ as the underlying transport."""
+        """RMQAPI: A NuropbInterface implementation that uses RabbitMQ as the underlying transport.
+
+        Where exchange inputs are none, but they user present in transport_settings, then use the
+        values from transport_settings
+        """
         if isinstance(amqp_url, str):
             parts = amqp_url.split("/")
             vhost = amqp_url.split("/")[-1]
@@ -119,6 +135,14 @@ class RMQAPI(NuropbInterface):
             logger.warning(
                 "No service instance provided, service will not be able to handle requests"
             )  # pragma: no cover
+
+        """ where exchange inputs are none, but they user present in transport_settings, 
+        then use the values from transport settings
+        """
+        if rpc_exchange is None and transport_settings.get("rpc_exchange", None):
+            rpc_exchange = transport_settings["rpc_exchange"]
+        if events_exchange is None and transport_settings.get("events_exchange", None):
+            events_exchange = transport_settings["events_exchange"]
 
         transport_settings.update(
             {

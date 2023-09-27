@@ -1,7 +1,8 @@
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
+from uuid import uuid4
 
 from nuropb.contexts.context_manager import NuropbContextManager
 from nuropb.contexts.context_manager_decorator import nuropb_context
@@ -22,20 +23,43 @@ def get_claims_from_token(bearer_token: str) -> Dict[str, Any] | None:
     }
 
 
-class ServiceExample:
+class ServiceStub:
     _service_name: str
     _instance_id: str
     _private_key: rsa.RSAPrivateKey
-    _method_call_count: int
 
-    def __init__(self, service_name: str, instance_id: str):
+    def __init__(
+            self,
+            service_name: str,
+            instance_id: Optional[str] = None,
+            private_key: Optional[rsa.RSAPrivateKey] = None,
+    ):
         self._service_name = service_name
-        self._instance_id = instance_id
-        self._private_key = private_key = rsa.generate_private_key(
+        self._instance_id = instance_id or uuid4().hex
+        self._private_key = private_key or rsa.generate_private_key(
             public_exponent=65537, key_size=2048, backend=default_backend()
         )
+    @property
+    def service_name(self) -> str:
+        return self._service_name
+
+    @property
+    def instance_id(self) -> str:
+        return self._instance_id
+
+    @property
+    def private_key(self) -> rsa.RSAPrivateKey:
+        return self._private_key
+
+
+class ServiceExample(ServiceStub):
+    _method_call_count: int
+    _raise_call_again_error: bool
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._method_call_count = 0
-        self.raise_call_again_error = True
+        self._raise_call_again_error = True
 
     def test_method(self, **kwargs: Any) -> str:
         _ = kwargs
@@ -77,9 +101,9 @@ class ServiceExample:
         self._method_call_count += 1
         logger.debug(f"test_call_again_error: {kwargs}")
         success_result = f"response from {self._service_name}.test_call_again_error"
-        if self.raise_call_again_error:
+        if self._raise_call_again_error:
             """this is preventing the test from getting into an infinite loop"""
-            self.raise_call_again_error = False
+            self._raise_call_again_error = False
             raise NuropbCallAgain("Test Call Again")
         result = kwargs.copy()
         result.update(

@@ -56,8 +56,7 @@ async def test_request_response_fail(test_settings, test_rmq_url, service_instan
     ttl = 60 * 30 * 1000
     trace_id = uuid4().hex
     logger.info(f"Requesting {service}.{method}")
-    # with pytest.raises(NuropbException) as error:
-    try:
+    with pytest.raises(NuropbMessageError) as error:
         result = await client_api.request(
             service=service,
             method=method,
@@ -66,13 +65,7 @@ async def test_request_response_fail(test_settings, test_rmq_url, service_instan
             ttl=ttl,
             trace_id=trace_id,
         )
-        logger.info(f"result: {result}")
-    except Exception as error:
-        logger.info(f"response: {error}")
-
-    # assert (
-    #     error.value.payload["error"]["description"] == "Unknown method test_method_fail"
-    # )
+    assert error.value.description == "Unknown method test_method_DOES_NOT_EXIST"
 
     method = "test_method"
     rpc_response = await client_api.request(

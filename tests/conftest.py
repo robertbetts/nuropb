@@ -73,11 +73,10 @@ def test_rmq_url(test_settings):
         )
     else:
         rmq_url = {
-            "cafile": "tls_connection/ca_cert.pem",
             "username": "guest",
             "password": "guest",
             "host": "localhost",
-            "port": 5671,
+            "port": 5672,
             "vhost": vhost,
             "verify": False,
         }
