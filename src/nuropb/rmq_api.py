@@ -54,6 +54,17 @@ class RMQAPI(NuropbInterface):
     _service_discovery: Dict[str, Any]
     _service_public_keys: Dict[str, Any]
 
+    @classmethod
+    def _get_vhost(cls, amqp_url: str | Dict[str, Any]) -> str:
+        if isinstance(amqp_url, str):
+            parts = amqp_url.split("/")
+            vhost = amqp_url.split("/")[-1]
+            if len(parts) < 4:
+                raise ValueError("Invalid amqp_url, missing vhost")
+        else:
+            vhost = amqp_url["vhost"]
+        return vhost
+
     def __init__(
         self,
         amqp_url: str | Dict[str, Any],
@@ -69,13 +80,7 @@ class RMQAPI(NuropbInterface):
         Where exchange inputs are none, but they user present in transport_settings, then use the
         values from transport_settings
         """
-        if isinstance(amqp_url, str):
-            parts = amqp_url.split("/")
-            vhost = amqp_url.split("/")[-1]
-            if len(parts) < 4:
-                raise ValueError("Invalid amqp_url, missing vhost")
-        else:
-            vhost = amqp_url["vhost"]
+        vhost = self._get_vhost(amqp_url)
 
         self._mesh_name = vhost
 
@@ -270,6 +275,41 @@ class RMQAPI(NuropbInterface):
                 service_message["nuropb_type"],
             )
 
+    @classmethod
+    def _handle_immediate_request_error(
+            cls,
+            rpc_response: bool,
+            payload: RequestPayloadDict | ResponsePayloadDict,
+            error: Dict[str, Any] | BaseException
+    ) -> ResponsePayloadDict:
+
+        if rpc_response and isinstance(error, BaseException):
+            raise error
+        elif rpc_response:
+            raise NuropbMessageError(
+                description=error["description"],
+                payload=payload,
+            )
+
+        if isinstance(error, NuropbException):
+            error = error.to_dict()
+        elif isinstance(error, BaseException):
+            error = {
+                "error": f"{type(error).__name__}",
+                "description": f"{type(error).__name__}: {error}",
+            }
+
+        return {
+            "tag": "response",
+            "context": payload["context"],
+            "correlation_id": payload["correlation_id"],
+            "trace_id": payload["trace_id"],
+            "result": None,
+            "error": error,
+            "warning": None,
+            "reply_to": "",
+        }
+
     async def request(
         self,
         service: str,
@@ -341,51 +381,19 @@ class RMQAPI(NuropbInterface):
                 encrypted=encrypted,
             )
         except Exception as err:
-            if rpc_response is False:
-                return {
-                    "tag": "response",
-                    "context": context,
-                    "correlation_id": correlation_id,
-                    "trace_id": trace_id,
-                    "result": None,
-                    "error": {
-                        "error": f"{type(err).__name__}",
-                        "description": f"Error sending request message: {err}",
-                    },
-                }
-            else:
-                raise err
+            return self._handle_immediate_request_error(rpc_response, message, err)
 
         try:
             response = await response_future
-            if rpc_response is True and response["error"] is not None:
-                raise NuropbMessageError(
-                    description=response["error"]["description"],
-                    payload=response,
-                )
-            elif rpc_response is True:
-                return response["result"]
-            else:
-                return response
-        except BaseException as err:
-            if rpc_response is True:
-                raise err
-            else:
-                if not isinstance(err, NuropbException):
-                    error = {
-                        "error": f"{type(err).__name__}",
-                        "description": f"Error waiting for response: {err}",
-                    }
-                else:
-                    error = err.to_dict()
-                return {
-                    "tag": "response",
-                    "context": context,
-                    "correlation_id": correlation_id,
-                    "trace_id": trace_id,
-                    "result": None,
-                    "error": error,
-                }
+        except Exception as err:
+            return self._handle_immediate_request_error(rpc_response, message, err)
+
+        if response["error"] is not None:
+            return self._handle_immediate_request_error(rpc_response, response, response["error"])
+        if rpc_response is True:
+            return response["result"]
+        else:
+            return response
 
     def command(
         self,
