@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.asyncio
-async def test_setting_connection_properties(test_rmq_url, test_settings):
+async def test_setting_connection_properties(rmq_settings, test_settings):
     """The client connection properties can be set by the user. The user can set the connection
     properties by passing a dictionary to the connection_properties argument of the RMQAPI
     constructor. The connection properties are used to set the properties of the AMQP connection
@@ -22,8 +22,8 @@ async def test_setting_connection_properties(test_rmq_url, test_settings):
         "host": "localhost",
         "username": "guest",
         "password": "guest",
-        "port": test_rmq_url["port"],
-        "vhost": test_rmq_url["vhost"],
+        "port": rmq_settings["port"],
+        "vhost": rmq_settings["vhost"],
         "verify": False,
     }
     transport_settings = dict(
@@ -71,15 +71,15 @@ async def test_setting_connection_properties(test_rmq_url, test_settings):
 
 
 @pytest.mark.asyncio
-async def test_single_instance_connection(test_rmq_url, test_settings):
+async def test_single_instance_connection(rmq_settings, test_settings):
     """Test Single instance connections
     """
     amqp_url = {
         "host": "localhost",
         "username": "guest",
         "password": "guest",
-        "port": test_rmq_url["port"],
-        "vhost": test_rmq_url["vhost"],
+        "port": rmq_settings["port"],
+        "vhost": rmq_settings["vhost"],
     }
     transport_settings = dict(
         dl_exchange=test_settings["dl_exchange"],
@@ -127,14 +127,14 @@ async def test_single_instance_connection(test_rmq_url, test_settings):
 
 
 @pytest.mark.asyncio
-async def test_bad_credentials(test_rmq_url, test_settings):
+async def test_bad_credentials(rmq_settings, test_settings):
 
     amqp_url = {
-        "host": test_rmq_url["host"],
-        "username": test_rmq_url["username"],
+        "host": rmq_settings["host"],
+        "username": rmq_settings["username"],
         "password": "bad_guest",
-        "port": test_rmq_url["port"],
-        "vhost": test_rmq_url["vhost"],
+        "port": rmq_settings["port"],
+        "vhost": rmq_settings["vhost"],
     }
     transport_settings = dict(
         dl_exchange=test_settings["dl_exchange"],
@@ -163,13 +163,13 @@ async def test_bad_credentials(test_rmq_url, test_settings):
 
 
 @pytest.mark.asyncio
-async def test_bad_vhost(test_rmq_url, test_settings):
+async def test_bad_vhost(rmq_settings, test_settings):
 
     amqp_url = {
-        "host": test_rmq_url["host"],
-        "username": test_rmq_url["username"],
-        "password": test_rmq_url["password"],
-        "port": test_rmq_url["port"],
+        "host": rmq_settings["host"],
+        "username": rmq_settings["username"],
+        "password": rmq_settings["password"],
+        "port": rmq_settings["port"],
         "vhost": "bad_vhost",
     }
     transport_settings = dict(

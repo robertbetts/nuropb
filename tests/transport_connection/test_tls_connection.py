@@ -13,7 +13,7 @@ if IN_GITHUB_ACTIONS:
 
 
 @pytest.mark.asyncio
-async def test_tls_connect(test_rmq_url, test_settings):
+async def test_tls_connect(rmq_settings, test_settings):
 
     def message_callback(message):
         print(message)
@@ -28,7 +28,7 @@ async def test_tls_connect(test_rmq_url, test_settings):
         "username": "guest",
         "password": "guest",
         "port": 5671,
-        "vhost": test_rmq_url["vhost"],
+        "vhost": rmq_settings["vhost"],
         "verify": False,
         "certfile": certfile,
         "keyfile": keyfile,

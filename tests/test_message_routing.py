@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.asyncio
-async def test_call_self(test_settings, test_rmq_url, service_instance):
+async def test_call_self(test_settings, rmq_settings, service_instance):
     """ Currently this test passes, as there is no check for the service name in the request method.
     Restricting the service name to be different from the service name of the service instance is
     under consideration for a future release.
@@ -26,7 +26,7 @@ async def test_call_self(test_settings, test_rmq_url, service_instance):
         service_name=service_instance.service_name,
         instance_id=service_instance.instance_id,
         service_instance=service_instance,
-        amqp_url=test_rmq_url,
+        amqp_url=rmq_settings,
         rpc_exchange=test_settings["rpc_exchange"],
         events_exchange=test_settings["events_exchange"],
         transport_settings=transport_settings,
@@ -59,7 +59,7 @@ async def test_call_self(test_settings, test_rmq_url, service_instance):
 
 
 @pytest.mark.asyncio
-async def test_subscribe_to_events_from_self(test_settings, test_rmq_url, service_instance):
+async def test_subscribe_to_events_from_self(test_settings, rmq_settings, service_instance):
     """ Currently this test passes, as there is no check to restrict binding to the service queue
     for events that originate from the service.
     This restriction is under consideration for a future release.
@@ -85,7 +85,7 @@ async def test_subscribe_to_events_from_self(test_settings, test_rmq_url, servic
         service_name=service_instance.service_name,
         instance_id=service_instance.instance_id,
         service_instance=service_instance,
-        amqp_url=test_rmq_url,
+        amqp_url=rmq_settings,
         rpc_exchange=test_settings["rpc_exchange"],
         events_exchange=test_settings["events_exchange"],
         transport_settings=transport_settings,

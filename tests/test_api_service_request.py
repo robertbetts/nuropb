@@ -10,7 +10,7 @@ logger = logging.getLogger()
 
 
 @pytest.mark.asyncio
-async def test_request_response_fail(test_settings, test_rmq_url, service_instance):
+async def test_request_response_fail(test_settings, rmq_settings, service_instance):
     service_name = test_settings["service_name"]
     instance_id = uuid4().hex
     transport_settings = dict(
@@ -24,7 +24,7 @@ async def test_request_response_fail(test_settings, test_rmq_url, service_instan
         service_name=service_name,
         instance_id=instance_id,
         service_instance=service_instance,
-        amqp_url=test_rmq_url,
+        amqp_url=rmq_settings,
         rpc_exchange="test_rpc_exchange",
         events_exchange="test_events_exchange",
         transport_settings=transport_settings,
@@ -42,7 +42,7 @@ async def test_request_response_fail(test_settings, test_rmq_url, service_instan
     )
     client_api = RMQAPI(
         instance_id=instance_id,
-        amqp_url=test_rmq_url,
+        amqp_url=rmq_settings,
         rpc_exchange="test_rpc_exchange",
         events_exchange="test_events_exchange",
         transport_settings=client_transport_settings,
@@ -86,7 +86,7 @@ async def test_request_response_fail(test_settings, test_rmq_url, service_instan
 
 
 @pytest.mark.asyncio
-async def test_request_response_pass(test_settings, test_rmq_url, service_instance):
+async def test_request_response_pass(test_settings, rmq_settings, service_instance):
     service_name = test_settings["service_name"]
     instance_id = uuid4().hex
     transport_settings = dict(
@@ -100,7 +100,7 @@ async def test_request_response_pass(test_settings, test_rmq_url, service_instan
         service_name=service_name,
         instance_id=instance_id,
         service_instance=service_instance,
-        amqp_url=test_rmq_url,
+        amqp_url=rmq_settings,
         rpc_exchange="test_rpc_exchange",
         events_exchange="test_events_exchange",
         transport_settings=transport_settings,
@@ -117,7 +117,7 @@ async def test_request_response_pass(test_settings, test_rmq_url, service_instan
     )
     client_api = RMQAPI(
         instance_id=instance_id,
-        amqp_url=test_rmq_url,
+        amqp_url=rmq_settings,
         rpc_exchange="test_rpc_exchange",
         events_exchange="test_events_exchange",
         transport_settings=client_transport_settings,
@@ -150,7 +150,7 @@ async def test_request_response_pass(test_settings, test_rmq_url, service_instan
 
 
 @pytest.mark.asyncio
-async def test_request_response_success(test_settings, test_rmq_url, service_instance):
+async def test_request_response_success(test_settings, rmq_settings, service_instance):
     service_name = test_settings["service_name"]
     instance_id = uuid4().hex
     transport_settings = dict(
@@ -164,7 +164,7 @@ async def test_request_response_success(test_settings, test_rmq_url, service_ins
         service_name=service_name,
         instance_id=instance_id,
         service_instance=service_instance,
-        amqp_url=test_rmq_url,
+        amqp_url=rmq_settings,
         rpc_exchange="test_rpc_exchange",
         events_exchange="test_events_exchange",
         transport_settings=transport_settings,
@@ -181,7 +181,7 @@ async def test_request_response_success(test_settings, test_rmq_url, service_ins
     )
     client_api = RMQAPI(
         instance_id=instance_id,
-        amqp_url=test_rmq_url,
+        amqp_url=rmq_settings,
         rpc_exchange="test_rpc_exchange",
         events_exchange="test_events_exchange",
         transport_settings=client_transport_settings,
@@ -215,7 +215,7 @@ async def test_request_response_success(test_settings, test_rmq_url, service_ins
 
 @pytest.mark.asyncio
 async def test_request_response_call_again(
-    test_settings, test_rmq_url, service_instance
+    test_settings, rmq_settings, service_instance
 ):
     service_name = test_settings["service_name"]
     instance_id = uuid4().hex
@@ -230,7 +230,7 @@ async def test_request_response_call_again(
         service_name=service_name,
         instance_id=instance_id,
         service_instance=service_instance,
-        amqp_url=test_rmq_url,
+        amqp_url=rmq_settings,
         rpc_exchange="test_rpc_exchange",
         events_exchange="test_events_exchange",
         transport_settings=transport_settings,
@@ -247,7 +247,7 @@ async def test_request_response_call_again(
     )
     client_api = RMQAPI(
         instance_id=instance_id,
-        amqp_url=test_rmq_url,
+        amqp_url=rmq_settings,
         rpc_exchange="test_rpc_exchange",
         events_exchange="test_events_exchange",
         transport_settings=client_transport_settings,
@@ -281,7 +281,7 @@ async def test_request_response_call_again(
 
 @pytest.mark.asyncio
 async def test_request_response_call_again_loop_fail(
-    test_settings, test_rmq_url, service_instance
+    test_settings, rmq_settings, service_instance
 ):
     service_name = test_settings["service_name"]
     instance_id = uuid4().hex
@@ -296,7 +296,7 @@ async def test_request_response_call_again_loop_fail(
         service_name=service_name,
         instance_id=instance_id,
         service_instance=service_instance,
-        amqp_url=test_rmq_url,
+        amqp_url=rmq_settings,
         rpc_exchange="test_rpc_exchange",
         events_exchange="test_events_exchange",
         transport_settings=transport_settings,
@@ -313,7 +313,7 @@ async def test_request_response_call_again_loop_fail(
     )
     client_api = RMQAPI(
         instance_id=instance_id,
-        amqp_url=test_rmq_url,
+        amqp_url=rmq_settings,
         rpc_exchange="test_rpc_exchange",
         events_exchange="test_events_exchange",
         transport_settings=client_transport_settings,
