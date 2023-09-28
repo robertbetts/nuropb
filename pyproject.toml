@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "nuropb"
-version = "0.1.6"
+version = "0.1.7"
 description = "NuroPb - A Distributed Event Driven Service Mesh"
 authors = ["Robert Betts <robert.betts@genoa.io>"]
 readme = "README.md"
@@ -47,6 +47,7 @@ env_files = [".env_test"]
 testpaths = ["tests"]
 
 [tool.pytest.ini_options]
+asyncio_mode = "strict"
 log_cli = true
 log_level = "DEBUG"
 log_cli_format = " %(levelname).1s %(asctime)s,%(msecs)d %(module)s %(lineno)s %(message)s"

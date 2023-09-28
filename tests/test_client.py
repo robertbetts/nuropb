@@ -10,7 +10,7 @@ logger = logging.getLogger()
 
 
 @pytest.mark.asyncio
-async def test_request_response_pass(test_settings, test_rmq_url, service_instance):
+async def test_request_response_pass(test_settings, rmq_settings, service_instance):
     instance_id = uuid4().hex
     client_transport_settings = dict(
         dl_exchange=test_settings["dl_exchange"],
@@ -19,7 +19,7 @@ async def test_request_response_pass(test_settings, test_rmq_url, service_instan
     )
     client_api = RMQAPI(
         instance_id=instance_id,
-        amqp_url=test_rmq_url,
+        amqp_url=rmq_settings,
         rpc_exchange="test_rpc_exchange",
         events_exchange="test_events_exchange",
         transport_settings=client_transport_settings,

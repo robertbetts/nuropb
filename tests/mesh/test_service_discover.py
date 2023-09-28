@@ -113,7 +113,7 @@ async def test_mesh_service_describe(test_mesh_client, test_mesh_service):
     logger.info(f"response: {pformat(rpc_response)}")
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(async_timeout=10)
 async def test_mesh_service_encrypt(test_mesh_client, test_mesh_service):
     """ user the service mesh api helper function to call the describe function for a service on the mesh.
     Test that service metta information is cached in the mesh client.

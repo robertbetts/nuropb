@@ -5,6 +5,7 @@ from uuid import uuid4
 import os
 
 import pytest
+import pytest_asyncio
 
 from nuropb.rmq_api import RMQAPI
 from nuropb.rmq_lib import (
@@ -15,12 +16,20 @@ from nuropb.rmq_lib import (
     configure_nuropb_rmq,
 )
 from nuropb.rmq_transport import RMQTransport
-from nuropb.testing.stubs import ServiceExample
+from nuropb.testing.stubs import IN_GITHUB_ACTIONS, ServiceExample
 
 logging.getLogger("pika").setLevel(logging.WARNING)
 
-IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
+@pytest.fixture(scope="session")
+def etcd_config():
+    if IN_GITHUB_ACTIONS:
+        return None
+    else:
+        dict(
+            host="localhost",
+            port=2379,
+        )
 
 @pytest.fixture(scope="session")
 def test_settings():
@@ -52,7 +61,7 @@ def test_settings():
     }
     end_time = datetime.datetime.utcnow()
     logging.info(
-        f"Test summary:\n"
+        f"TEST SESSION SUMMARY:\n"
         f"start_time: {start_time}\n"
         f"end_time: {end_time}\n"
         f"duration: {end_time - start_time}"
@@ -60,11 +69,12 @@ def test_settings():
 
 
 @pytest.fixture(scope="session")
-def test_rmq_url(test_settings):
+def rmq_settings(test_settings):
     logging.debug("Setting up RabbitMQ test instance")
     vhost = f"pytest-{secrets.token_hex(8)}"
+
     if IN_GITHUB_ACTIONS:
-        rmq_url = build_amqp_url(
+        settings = dict(
             host=test_settings["host"],
             port=test_settings["port"],
             username=test_settings["username"],
@@ -72,15 +82,14 @@ def test_rmq_url(test_settings):
             vhost=vhost,
         )
     else:
-        rmq_url = {
-            "cafile": "tls_connection/ca_cert.pem",
-            "username": "guest",
-            "password": "guest",
-            "host": "localhost",
-            "port": 5671,
-            "vhost": vhost,
-            "verify": False,
-        }
+        settings = dict(
+            username="guest",
+            password="guest",
+            host="localhost",
+            port=5672,
+            vhost=vhost,
+            verify=False,
+        )
 
     api_url = build_rmq_api_url(
         scheme=test_settings["api_scheme"],
@@ -90,7 +99,7 @@ def test_rmq_url(test_settings):
         password=test_settings["password"],
     )
 
-    create_virtual_host(api_url, rmq_url)
+    create_virtual_host(api_url, settings)
 
     def message_callback(*args, **kwargs):  # pragma: no cover
         pass
@@ -98,7 +107,7 @@ def test_rmq_url(test_settings):
     transport_settings = dict(
         service_name=test_settings["service_name"],
         instance_id=uuid4().hex,
-        amqp_url=rmq_url,
+        amqp_url=settings,
         rpc_exchange=test_settings["rpc_exchange"],
         events_exchange=test_settings["events_exchange"],
         dl_exchange=test_settings["dl_exchange"],
@@ -111,15 +120,15 @@ def test_rmq_url(test_settings):
     transport = RMQTransport(**transport_settings)
 
     configure_nuropb_rmq(
-        rmq_url=rmq_url,
+        rmq_url=settings,
         events_exchange=transport.events_exchange,
         rpc_exchange=transport.rpc_exchange,
         dl_exchange=transport._dl_exchange,
         dl_queue=transport._dl_queue,
     )
-    yield rmq_url
+    yield settings
     logging.debug("Shutting down RabbitMQ test instance")
-    delete_virtual_host(api_url, rmq_url)
+    delete_virtual_host(api_url, settings)
 
 
 @pytest.fixture(scope="session")
@@ -169,8 +178,8 @@ def test_rmq_url_static(test_settings):
         dl_queue=transport._dl_queue,
     )
     yield rmq_url
-    # logging.debug("Shutting down RabbitMQ test instance")
-    # delete_virtual_host(api_url, rmq_url)
+    logging.debug("Shutting down RabbitMQ test instance")
+    delete_virtual_host(api_url, rmq_url)
 
 
 @pytest.fixture(scope="session")
@@ -193,8 +202,8 @@ def service_instance():
     )
 
 
-@pytest.fixture(scope="function")
-def test_mesh_service(test_settings, test_rmq_url, service_instance):
+@pytest_asyncio.fixture(scope="function")
+async def test_mesh_service(test_settings, rmq_settings, service_instance):
     service_name = test_settings["service_name"]
     instance_id = uuid4().hex
     transport_settings = dict(
@@ -208,16 +217,18 @@ def test_mesh_service(test_settings, test_rmq_url, service_instance):
         service_name=service_name,
         instance_id=instance_id,
         service_instance=service_instance,
-        amqp_url=test_rmq_url,
+        amqp_url=rmq_settings,
         rpc_exchange="test_rpc_exchange",
         events_exchange="test_events_exchange",
         transport_settings=transport_settings,
     )
     yield service_api
 
+    await service_api.disconnect()
 
-@pytest.fixture(scope="function")
-def test_mesh_client(test_rmq_url, test_settings, test_mesh_service):
+
+@pytest_asyncio.fixture(scope="function")
+async def test_mesh_client(rmq_settings, test_settings, test_mesh_service):
     instance_id = uuid4().hex
     settings = test_mesh_service.transport.rmq_configuration
     client_transport_settings = dict(
@@ -227,9 +238,11 @@ def test_mesh_client(test_rmq_url, test_settings, test_mesh_service):
     )
     client_api = RMQAPI(
         instance_id=instance_id,
-        amqp_url=test_rmq_url,
+        amqp_url=rmq_settings,
         rpc_exchange=settings["rpc_exchange"],
         events_exchange=settings["events_exchange"],
         transport_settings=client_transport_settings,
     )
     yield client_api
+
+    await client_api.disconnect()

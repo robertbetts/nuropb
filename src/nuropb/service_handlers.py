@@ -59,7 +59,7 @@ def error_dict_from_exception(exception: Exception | BaseException) -> Dict[str,
     :param exception:
     :return:
     """
-    if hasattr(exception, "to_dict"):
+    if isinstance(exception, NuropbException):
         return exception.to_dict()
 
     if hasattr(exception, "description"):
@@ -266,7 +266,7 @@ def handle_execution_result(
     :param message_complete_callback:
     :return:
     """
-    error = None
+    error: BaseException | Dict[str, Any] | None = None
     acknowledgement: AcknowledgeAction = "ack"
     if asyncio.isfuture(result):
         error = result.exception()
@@ -303,10 +303,15 @@ def handle_execution_result(
 
             Do not send a response for commands
             """
+            if isinstance(error, (Exception, BaseException)):
+                pyload_error = error_dict_from_exception(error)
+            else:
+                pyload_error = error
+
             payload = ResponsePayloadDict(
                 tag="response",
                 result=result,
-                error=error,
+                error=pyload_error,
                 correlation_id=service_message["correlation_id"],
                 trace_id=service_message["trace_id"],
                 context=service_message["nuropb_payload"]["context"],
@@ -386,11 +391,13 @@ def execute_request(
                 or not hasattr(service_instance, method_name)
                 or not callable(getattr(service_instance, method_name))
             ):
-                raise NuropbHandlingError(
+                exception_result = NuropbHandlingError(
                     description="Unknown method {}".format(method_name),
                     payload=payload,
                     exception=None,
                 )
+                handle_execution_result(service_message, exception_result, message_complete_callback)
+                return
 
             try:
                 if method_name == "nuropb_describe":
@@ -407,24 +414,30 @@ def execute_request(
             except NuropbException as err:
                 if verbose:
                     logger.exception(err)
-                raise
+                handle_execution_result(service_message, err, message_complete_callback)
+                return
+
             except Exception as err:
                 if verbose:
                     logger.exception(err)
                 error = f"{type(err).__name__}: {err}"
-                raise NuropbException(
+                exception_result = NuropbException(
                     description=f"Runtime exception calling {service_name}.{method_name}: {error}",
                     payload=payload,
                     exception=err,
                 )
+                handle_execution_result(service_message, exception_result, message_complete_callback)
+                return
 
         if asyncio.isfuture(result) or asyncio.iscoroutine(result):
             # Asynchronous responses
 
             if is_future(result):
-                raise ValueError(
+                exception_result = ValueError(
                     "Tornado Future detected, please use asyncio.Future instead"
                 )
+                handle_execution_result(service_message, exception_result, message_complete_callback)
+                return
 
             def future_done_callback(future: Awaitable[Any]) -> None:
                 handle_execution_result(
@@ -441,6 +454,7 @@ def execute_request(
         else:
             # Synchronous responses
             handle_execution_result(service_message, result, message_complete_callback)
+
     except Exception as err:
         if verbose:
             logger.exception(err)

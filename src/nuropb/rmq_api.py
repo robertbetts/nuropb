@@ -27,7 +27,19 @@ verbose = False
 
 
 class RMQAPI(NuropbInterface):
-    """RMQAPI: A NuropbInterface implementation that uses RabbitMQ as the underlying transport."""
+    """RMQAPI: A NuropbInterface implementation that uses RabbitMQ as the underlying transport.
+
+    When an existing transport initialised and connected, and a subsequent transport
+    instance is connected with the same service_name and instance_id as the first, the broker
+    will shut down the channel of subsequent instances when they attempt to configure their
+    response queue. This is because the response queue is opened in exclusive mode. The
+    exclusive mode is used to ensure that only one consumer (nuropb api connection) is
+    consuming from the response queue.
+
+    Deliberately specifying a fixed instance_id, is a valid mechanism to ensure that a service
+    can only run in single instance mode. This is useful for services that are not designed to
+    be run in a distributed manner or where there is specific service configuration required.
+    """
 
     _mesh_name: str
     _connection_name: str
@@ -42,6 +54,17 @@ class RMQAPI(NuropbInterface):
     _service_discovery: Dict[str, Any]
     _service_public_keys: Dict[str, Any]
 
+    @classmethod
+    def _get_vhost(cls, amqp_url: str | Dict[str, Any]) -> str:
+        if isinstance(amqp_url, str):
+            parts = amqp_url.split("/")
+            vhost = amqp_url.split("/")[-1]
+            if len(parts) < 4:
+                raise ValueError("Invalid amqp_url, missing vhost")
+        else:
+            vhost = amqp_url["vhost"]
+        return vhost
+
     def __init__(
         self,
         amqp_url: str | Dict[str, Any],
@@ -52,14 +75,12 @@ class RMQAPI(NuropbInterface):
         events_exchange: Optional[str] = None,
         transport_settings: Optional[Dict[str, Any]] = None,
     ):
-        """RMQAPI: A NuropbInterface implementation that uses RabbitMQ as the underlying transport."""
-        if isinstance(amqp_url, str):
-            parts = amqp_url.split("/")
-            vhost = amqp_url.split("/")[-1]
-            if len(parts) < 4:
-                raise ValueError("Invalid amqp_url, missing vhost")
-        else:
-            vhost = amqp_url["vhost"]
+        """RMQAPI: A NuropbInterface implementation that uses RabbitMQ as the underlying transport.
+
+        Where exchange inputs are none, but they user present in transport_settings, then use the
+        values from transport_settings
+        """
+        vhost = self._get_vhost(amqp_url)
 
         self._mesh_name = vhost
 
@@ -119,6 +140,14 @@ class RMQAPI(NuropbInterface):
             logger.warning(
                 "No service instance provided, service will not be able to handle requests"
             )  # pragma: no cover
+
+        """ where exchange inputs are none, but they user present in transport_settings, 
+        then use the values from transport settings
+        """
+        if rpc_exchange is None and transport_settings.get("rpc_exchange", None):
+            rpc_exchange = transport_settings["rpc_exchange"]
+        if events_exchange is None and transport_settings.get("events_exchange", None):
+            events_exchange = transport_settings["events_exchange"]
 
         transport_settings.update(
             {
@@ -246,6 +275,41 @@ class RMQAPI(NuropbInterface):
                 service_message["nuropb_type"],
             )
 
+    @classmethod
+    def _handle_immediate_request_error(
+            cls,
+            rpc_response: bool,
+            payload: RequestPayloadDict | ResponsePayloadDict,
+            error: Dict[str, Any] | BaseException
+    ) -> ResponsePayloadDict:
+
+        if rpc_response and isinstance(error, BaseException):
+            raise error
+        elif rpc_response:
+            raise NuropbMessageError(
+                description=error["description"],
+                payload=payload,
+            )
+
+        if isinstance(error, NuropbException):
+            error = error.to_dict()
+        elif isinstance(error, BaseException):
+            error = {
+                "error": f"{type(error).__name__}",
+                "description": f"{type(error).__name__}: {error}",
+            }
+
+        return {
+            "tag": "response",
+            "context": payload["context"],
+            "correlation_id": payload["correlation_id"],
+            "trace_id": payload["trace_id"],
+            "result": None,
+            "error": error,
+            "warning": None,
+            "reply_to": "",
+        }
+
     async def request(
         self,
         service: str,
@@ -317,51 +381,19 @@ class RMQAPI(NuropbInterface):
                 encrypted=encrypted,
             )
         except Exception as err:
-            if rpc_response is False:
-                return {
-                    "tag": "response",
-                    "context": context,
-                    "correlation_id": correlation_id,
-                    "trace_id": trace_id,
-                    "result": None,
-                    "error": {
-                        "error": f"{type(err).__name__}",
-                        "description": f"Error sending request message: {err}",
-                    },
-                }
-            else:
-                raise err
+            return self._handle_immediate_request_error(rpc_response, message, err)
 
         try:
             response = await response_future
-            if rpc_response is True and response["error"] is not None:
-                raise NuropbMessageError(
-                    description=response["error"]["description"],
-                    payload=response,
-                )
-            elif rpc_response is True:
-                return response["result"]
-            else:
-                return response
-        except BaseException as err:
-            if rpc_response is True:
-                raise err
-            else:
-                if not isinstance(err, NuropbException):
-                    error = {
-                        "error": f"{type(err).__name__}",
-                        "description": f"Error waiting for response: {err}",
-                    }
-                else:
-                    error = err.to_dict()
-                return {
-                    "tag": "response",
-                    "context": context,
-                    "correlation_id": correlation_id,
-                    "trace_id": trace_id,
-                    "result": None,
-                    "error": error,
-                }
+        except Exception as err:
+            return self._handle_immediate_request_error(rpc_response, message, err)
+
+        if response["error"] is not None:
+            return self._handle_immediate_request_error(rpc_response, response, response["error"])
+        if rpc_response is True:
+            return response["result"]
+        else:
+            return response
 
     def command(
         self,
@@ -501,7 +533,7 @@ class RMQAPI(NuropbInterface):
                     )
                 return service_info
             except Exception as err:
-                logger.error(f"error loading the public key for {service_name}: {err}")
+                raise ValueError(f"error loading the public key for {service_name}: {err}")
 
     async def requires_encryption(self, service_name: str, method_name: str) -> bool:
         """requires_encryption: Queries the service discovery information for the service_name

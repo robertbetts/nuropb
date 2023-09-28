@@ -11,7 +11,7 @@ import pika
 from pika.channel import Channel
 from pika.credentials import PlainCredentials
 
-from nuropb.interface import PayloadDict, NuropbTransportError
+from nuropb.interface import PayloadDict, NuropbTransportError, NUROPB_VERSION, NUROPB_PROTOCOL_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -50,50 +50,88 @@ def rmq_api_url_from_amqp_url(
     return build_rmq_api_url(scheme, host, port, username, password)
 
 
-def get_connection_parameters(amqp_url: str | Dict[str, Any]) -> pika.ConnectionParameters | pika.URLParameters:
-    """Return the connection parameters for the transport"""
+def get_client_connection_properties(name: Optional[str] = None, instance_id: Optional[str] = None) -> Dict[str, str]:
+    """Returns the client connection properties for the transport"""
+    properties = {
+        "product": "Nuropb",
+        "version": NUROPB_VERSION,
+        "protocol": NUROPB_PROTOCOL_VERSION,
+        "platform": "Python",
+    }
+    if name:
+        properties["name"] = name
+    if instance_id:
+        properties["instance_id"] = instance_id
+
+    return properties
+
+
+def get_connection_parameters(
+        amqp_url: str | Dict[str, Any],
+        name: Optional[str] = None,
+        instance_id: Optional[str] = None,
+        **overrides: Any
+) -> pika.ConnectionParameters | pika.URLParameters:
+    """Return the connection parameters for the transport
+    :param amqp_url: the AMQP URL or connection parameters to use
+    :param name: the name of the service or client
+    :param instance_id: the instance id of the service or client
+    :param overrides: additional keyword arguments to override the connection parameters
+    """
     if isinstance(amqp_url, dict):
         # create TLS connection parameters
-        cafile = amqp_url.get("cafile", None)
-        if cafile:  # pragma: no cover
-            context = ssl.create_default_context(
-                cafile=cafile,
-            )
-        else:
-            context = ssl.create_default_context()
-
-        if amqp_url.get("certfile"):
-            context.load_cert_chain(
-                certfile=amqp_url.get("certfile"),
-                keyfile=amqp_url.get("keyfile")
-            )
-
-        if amqp_url.get("verify", True) is False:
-            context.check_hostname = False
-            context.verify_mode = ssl.CERT_NONE
-        else:
-            context.check_hostname = True
-            context.verify_mode = ssl.CERT_REQUIRED
-
-        if amqp_url.get("username", None):
-            credentials = PlainCredentials(amqp_url["username"], amqp_url["password"])
-        else:
-            credentials = None
 
         host = amqp_url.get("host", None)
         port = amqp_url.get("port", None)
-        vhost = amqp_url.get("vhost", "/")
-        ssl_options = pika.SSLOptions(
-            context=context,
-            server_hostname=host
-        )
-        conn_params = pika.ConnectionParameters(
-            host=host,
-            port=port,
-            virtual_host=vhost,
-            credentials=credentials,
-            ssl_options=ssl_options
-        )
+        pika_parameters = {
+            "host": host,
+            "port": port,
+            "client_properties": get_client_connection_properties(name=name, instance_id=instance_id),
+            "heartbeat": 60,
+        }
+        vhost = amqp_url.get("vhost", None)
+        if vhost:
+            pika_parameters["virtual_host"] = vhost
+
+        if amqp_url.get("cafile", None) or amqp_url.get("certfile"):
+            cafile = amqp_url.get("cafile", None)
+            if cafile:  # pragma: no cover
+                context = ssl.create_default_context(
+                    cafile=cafile,
+                )
+                context.verify_mode = ssl.CERT_REQUIRED
+            else:
+                context = ssl.create_default_context()
+                context.verify_mode = ssl.CERT_REQUIRED
+
+            # For client x509 certificate authentication
+            if amqp_url.get("certfile"):
+                context.load_cert_chain(
+                    certfile=amqp_url.get("certfile"),
+                    keyfile=amqp_url.get("keyfile")
+                )
+
+            # Whether to disable SSL certificate verification
+            if amqp_url.get("verify", True) is False:
+                context.check_hostname = False
+                context.verify_mode = ssl.CERT_NONE
+            else:
+                context.check_hostname = True
+                context.verify_mode = ssl.CERT_REQUIRED
+
+            ssl_options = pika.SSLOptions(
+                context=context,
+                server_hostname=host
+            )
+            pika_parameters["ssl_options"] = ssl_options
+
+        if amqp_url.get("username", None):
+            credentials = PlainCredentials(amqp_url["username"], amqp_url["password"])
+            pika_parameters["credentials"] = credentials
+
+        pika_parameters.update(overrides)
+
+        conn_params = pika.ConnectionParameters(**pika_parameters)
         return conn_params
 
     else:

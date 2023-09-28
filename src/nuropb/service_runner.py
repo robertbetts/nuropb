@@ -82,9 +82,9 @@ class ServiceContainer(ServiceRunner):
     _is_leader: bool
     _leader_reference: str
     _etcd_config: Dict[str, Any]
-    _etcd_client: EtcdClient
-    _etcd_lease: Lease
-    _etcd_watcher: Watcher
+    _etcd_client: EtcdClient | None
+    _etcd_lease: Lease | None
+    _etcd_watcher: Watcher | None
     _etcd_prefix: str
 
     _container_running_future: Awaitable[bool] | None
@@ -114,22 +114,29 @@ class ServiceContainer(ServiceRunner):
         self._leader_reference = ""
         self._etcd_prefix = f"/nuropb/{self._service_name}"
         self._etcd_config = etcd_config if etcd_config is not None else {}
+        self._etcd_client = None
+        self._etcd_lease = None
+        self._etcd_watcher = None
+
+
+        if not self._etcd_config:
+            logger.info("etcd features are disabled")
+            self.running_state = "running-standalone"
 
         logger.info(
-            "Starting the service container for {}:{}".format(
+            "ServiceRunner is wrapping {}:{}".format(
                 self._service_name, self._instance_id
             )
         )
 
-        if not self._etcd_config:
-            logger.warning("etcd features are disabled")
-            self.running_state = "running-standalone"
-        else:
-            """asyncio NOTE: the etcd3 client is initialized as an asyncio task and will run
-            once __init__ has completed and there us a running asyncio event loop.
-            """
-            task = asyncio.create_task(self.init_etcd(on_startup=True))
-            task.add_done_callback(lambda _: None)
+
+        # ***NOTE*** MOVED THIS CODE to self.start()
+        # if self._etcd_config:
+        #     """asyncio NOTE: the etcd3 client is initialized as an asyncio task and will run
+        #     once __init__ has completed and there us a running asyncio event loop.
+        #     """
+        #     task = asyncio.create_task(self.init_etcd(on_startup=True))
+
 
     @property
     def running_state(self) -> ContainerRunningState:
@@ -304,9 +311,6 @@ class ServiceContainer(ServiceRunner):
             """
             logger.error(f"Error during leader nomination: {e}")
             logger.exception(e)
-            logger.info("called init_etcd() to re-initiate the etcd connection")
-            task = asyncio.create_task(self.init_etcd(on_startup=False))
-            task.add_done_callback(lambda _: None)
 
     def update_etcd_service_property(self, key: str, value: Any) -> bool:
         """update_etcd_service_property: updates the etcd3 service property.
@@ -400,15 +404,24 @@ class ServiceContainer(ServiceRunner):
         await self._instance.connect()
 
     async def start(self) -> bool:
-        """start: starts the container service instance.
-        - primary entry point to start the service container.
+        """
+        - Starts the etcd client if configured
+        - Startup Steps:
+            - Leader election
+            - Configures the brokers nuropb service mesh configuration  if not done
+            - Starts the container service instance.
+
         :return: None
         """
         started = False
         try:
+            if self._etcd_config:
+                await self.init_etcd(on_startup=True)
+
             await self.startup_steps()
             logger.info("Container startup complete")
             started = True
+
         except AMQPConnectionError as err:
             logger.error(f"Startup error connecting to RabbitMQ: {err}")
         except HTTPError as err:
@@ -428,11 +441,16 @@ class ServiceContainer(ServiceRunner):
         :return: None
         """
         self.running_state = "stopping"
-        self._container_shutdown_future = asyncio.Future()
         self._shutdown = True
-        self._etcd_watcher.stop()
+
         try:
-            await self._container_shutdown_future
+            if self._etcd_watcher:
+                self._etcd_watcher.stop()
+            if self._etcd_lease:
+                self._etcd_lease.revoke()
+            if self._etcd_client:
+                self._etcd_client.close()
+            await self._instance.disconnect()
             self.running_state = "shutdown"
             logger.info("Container shutdown complete")
         except (asyncio.CancelledError, Exception) as err:
@@ -440,7 +458,9 @@ class ServiceContainer(ServiceRunner):
                 logger.info(f"container shutdown future cancelled: {err}")
             else:
                 logger.exception(f"Container shutdown future runtime exception: {err}")
-        finally:
-            ioloop: AbstractEventLoop = asyncio.get_running_loop()
-            if ioloop.is_running():
-                ioloop.stop()
+
+        # NOTEs: event loop should be managed outside the scope of this class
+        # finally:
+        #     ioloop: AbstractEventLoop = asyncio.get_running_loop()
+        #     if ioloop.is_running():
+        #         ioloop.stop()

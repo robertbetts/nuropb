@@ -1,6 +1,6 @@
 import logging
 import functools
-from typing import List, Set, Optional, Any, Dict, Awaitable, Literal, TypedDict
+from typing import List, Set, Optional, Any, Dict, Awaitable, Literal, TypedDict, cast
 import asyncio
 import time
 
@@ -8,7 +8,7 @@ import pika
 from pika import connection
 from pika.adapters.asyncio_connection import AsyncioConnection
 from pika.channel import Channel
-from pika.exceptions import ChannelClosedByBroker, ProbableAccessDeniedError
+from pika.exceptions import ChannelClosedByBroker, ProbableAccessDeniedError, ChannelClosedByClient
 import pika.spec
 from pika.frame import Method
 
@@ -25,7 +25,7 @@ from nuropb.interface import (
     NUROPB_PROTOCOL_VERSION,
     NUROPB_VERSION,
     NuropbNotDeliveredError,
-    NuropbCallAgainReject,
+    NuropbCallAgainReject, RequestPayloadDict, ResponsePayloadDict,
 )
 from nuropb.rmq_lib import (
     rmq_api_url_from_amqp_url,
@@ -114,21 +114,20 @@ class ServiceNotConfigured(Exception):
     """Raised when a service is not properly configured on the RabbitMQ broker.
     the leader will be expected to configure the Exchange and service queues
     """
-
     pass
 
 
 class RMQTransport:
-    """
+    """ RMQTransport is the base class for the RabbitMQ transport. It wraps the
+    NuroPb service mesh patterns and rules over the AMQP protocol.
 
-    If RabbitMQ closes the connection, this class will stop and indicate
-    that reconnection is necessary. You should look at the output, as
-    there are limited reasons why the connection may be closed, which
-    usually are tied to permission related issues or socket timeouts.
+    When RabbitMQ closes the connection, this class will stop and alert that
+    reconnection is necessary, in some cases re-connection takes place automatically.
+    Disconnections should be continuously monitored, there are various reasons why a
+    connection or channel may be closed after being successfully opened, and usually
+    related to authentication, permissions, protocol violation or networking.
 
-    If the channel is closed, it will indicate a problem with one of the
-    commands that were issued and that should surface in the output as well.
-
+    TODO: Configure the Pika client connection attributes in the pika client properties.
     """
     _service_name: str
     _instance_id: str
@@ -203,6 +202,16 @@ class RMQTransport:
             - int prefetch_count: The number of messages to prefetch defaults to 1, unlimited is 0.
                     Experiment with larger values for higher throughput in your user case.
 
+            When an existing transport initialised and connected, and a subsequent transport
+            instance is connected with the same service_name and instance_id as the first, the broker
+            will shut down the channel of subsequent instances when they attempt to configure their
+            response queue. This is because the response queue is opened in exclusive mode. The
+            exclusive mode is used to ensure that only one consumer (nuropb api connection) is
+            consuming from the response queue.
+
+            Deliberately specifying a fixed instance_id, is a valid mechanism to ensure that a service
+            can only run in single instance mode. This is useful for services that are not designed to
+            be run in a distributed manner or where there is specific service configuration required.
         """
         self._connected = False
         self._closing = False
@@ -238,7 +247,7 @@ class RMQTransport:
         self._service_queue = kwargs.get("service_queue", None) or f"nuropb-{self._service_name}-sq"
         self._response_queue = (
                 kwargs.get("response_queue", None)
-                or f"nuropb-{self._service_name}-{self._instance_id}-response"
+                or f"nuropb-{self._service_name}-{self._instance_id}-rq"
         )
         self._rpc_bindings = rpc_bindings
         self._event_bindings = event_bindings
@@ -343,7 +352,7 @@ class RMQTransport:
         amqp_url = amqp_url or self._amqp_url
         if amqp_url is None:
             raise ValueError("amqp_url is not provided")
-        rmq_api_url = rmq_api_url or rmq_api_url_from_amqp_url(amqp_url)
+        # rmq_api_url = rmq_api_url or rmq_api_url_from_amqp_url(amqp_url)
         if rmq_api_url is None:
             raise ValueError("rmq_api_url is not provided")
         try:
@@ -372,6 +381,12 @@ class RMQTransport:
         self._connected_future = self.connect()
         try:
             await self._connected_future
+            if self._connected_future.done():
+                err = self._connected_future.exception()
+                if isinstance(err, NuropbTransportError) and err.close_connection:
+                    await self.stop()
+                elif err is not None:
+                    raise err
         except ProbableAccessDeniedError as err:
             if isinstance(self._amqp_url, dict):
                 vhost = self._amqp_url.get("vhost", "")
@@ -386,9 +401,18 @@ class RMQTransport:
                     f"Access denied to RabbitMQ for the virtual host {vhost}: {err}"
                 )
                 raise err
+        except NuropbTransportError as err:
+            """ Logging already captured, handle the error, likely a channel closed by broker
+            """
+            if not self._connected_future.done():
+                self._connected_future.set_exception(err)
+                if err.close_connection:
+                    await self.stop()
+
         except Exception as err:
-            logger.error(f"Failed to connect to RabbitMQ: {err}")
-            raise err
+            logger.exception("General failure connecting to RabbitMQ. %s: %s", type(err).__name__, err)
+            if not self._connected_future.done():
+                self._connected_future.set_exception(err)
 
     async def stop(self) -> None:
         """Cleanly shutdown the connection to RabbitMQ by stopping the consumer
@@ -403,12 +427,15 @@ class RMQTransport:
         """
         if not self._closing:
             logger.info("Stopping")
-            if self._consuming:
-                await self.stop_consuming()
+            try:
+                if self._consuming:
+                    await self.stop_consuming()
+            except Exception as err:
+                logger.exception(f"Error stopping consuming: {err}")
             self._disconnected_future = self.disconnect()
             await self._disconnected_future
 
-    def connect(self) -> Awaitable[bool]:
+    def connect(self) -> asyncio.Future[bool]:
         """This method initiates a connection to RabbitMQ, returning the connection handle.
         When the connection is established, the on_connection_open method
         will be invoked by pika.
@@ -447,10 +474,14 @@ class RMQTransport:
         :return: asyncio.Future
         """
         if self._connection is None:
-            raise RuntimeError("RMQ transport is not connected")
+            logger.info("RMQ transport is not connected")
+        elif self._connection.is_closing or self._connection.is_closed:
+            logger.info("RMQ transport is already closing or closed")
 
-        if self._connection.is_closing or self._connection.is_closed:
-            raise RuntimeError("RMQ transport is already closing or closed")
+        if self._connection is None or not self._connected:
+            disconnected_future: asyncio.Future[bool] = asyncio.Future()
+            disconnected_future.set_result(True)
+            return disconnected_future
 
         if (
             self._disconnected_future is not None
@@ -476,23 +507,25 @@ class RMQTransport:
 
         self.open_channel()
 
-    def on_connection_open_error(
-        self, _connection: AsyncioConnection, err: Exception
-    ) -> None:
-        """This method is called by pika if the connection to RabbitMQ
-        can't be established.
+    def on_connection_open_error(self, conn: AsyncioConnection, reason: Exception) -> None:
+        """This method is called by pika if the connection to RabbitMQ can't be established.
 
-        :param pika.adapters.asyncio_connection.AsyncioConnection _connection:
-           The connection
-        :param Exception err: The error
+        :param pika.adapters.asyncio_connection.AsyncioConnection conn:
+        :param Exception reason: The error
         """
-        logger.error("Connection open failed: %s", err)
+        logger.error("Connection open Error. %s: %s", type(reason).__name__, reason)
         if self._connected_future is not None and not self._connected_future.done():
-            self._connected_future.set_exception(err)
-
+            if isinstance(reason, ProbableAccessDeniedError):
+                close_connection = True
+            else:
+                close_connection = False
+            self._connected_future.set_exception(NuropbTransportError(
+                description=f"Connection open Error. {type(reason).__name__}: {reason}",
+                exception=reason,
+                close_connection=close_connection,
+            ))
         if self._connecting:
             self._connecting = False
-            # self.connect()
 
     def on_connection_closed(
         self, _connection: AsyncioConnection, reason: Exception
@@ -545,24 +578,87 @@ class RMQTransport:
         self.declare_response_queue()
 
     def on_channel_closed(self, channel: Channel, reason: Exception) -> None:
-        """Invoked by pika when RabbitMQ unexpectedly closes the channel. Channels are usually closed
-        if you attempt to do something that violates the protocol, such as re-declare an exchange or
-        queue with different parameters. In this case, we'll close the connection to shut down the object.
+        """Invoked by pika when the channel is closed. Channels are at times close by the
+        broker for various reasons, the most common being protocol violations e.g. acknowledging
+        messages using an invalid message_tag. In most cases when the channel is closed by
+        the broker, nuropb will automatically open a new channel and re-declare the service queue.
+
+        In the following cases the channel is not automatically re-opened:
+            * When the connection is closed by this transport API
+            * When the connection is close by the broker 403 (ACCESS_REFUSED):
+                Typically these examples are seen:
+                - "Provided JWT token has expired at timestamp". In this case the transport will
+                    require a fresh JWT token before attempting to reconnect.
+                - queue 'XXXXXXX' in vhost 'YYYYY' in exclusive use. In this case there is another
+                    response queue setup with the same name. Having a fixed response queue name is
+                    a valid mechanism to enforce a single instance of a service.
+            * When the connection is close by the broker 403 (NOT_FOUND):
+                Typically where there is an exchange configuration issue.
+
+        Always investigate the reasons why a channel is closed and introduce logic to handle
+        that scenario accordingly. It is important to continuously monitor for this condition.
+
+        TODO: When there is message processing in flight, and particularly with a prefetch
+            count > 1, then those messages are now not able to be acknowledged. By doing so will
+            result in a forced channel closure by the broker and potentially a poison pill type
+            scenario.
 
         :param pika.channel.Channel channel: The closed channel
         :param Exception reason: why the channel was closed
         """
         if isinstance(reason, ChannelClosedByBroker):
-            logger.critical(
-                f"RabbitMQ channel {channel} closed by broker with reply_code: {reason.reply_code} "
-                f"and reply_text: {reason.reply_text}"
-            )
-            if self._connected_future and not self._connected_future.done():
-                self._connected_future.set_exception(Exception)
-                self._connecting = False
+            if reason.reply_code == 403 and self._response_queue in reason.reply_text:
+                reason_description = (
+                    f"RabbitMQ channel closed by the broker ({reason.reply_code})."
+                    " There is already a response queue setup with the same name and instance_id,"
+                    " and hence this service is considered single instance only"
+                )
+            elif reason.reply_code == 403 and "Provided JWT token has expired" in reason.reply_text:
+                reason_description = (
+                    f"RabbitMQ channel closed by the broker ({reason.reply_code})."
+                    f" AuthenticationExpired: {reason.reply_text}"
+                )
+            else:
+                reason_description = (
+                    f"RabbitMQ channel closed by the broker "
+                    f"({reason.reply_code}): {reason.reply_text}"
+                )
 
-        # investigate reasons and methods automatically reopen the channel.
-        # until a solution is found it will be important to monitor for this condition
+            logger.critical(reason_description)
+            if self._connected_future and not self._connected_future.done():
+                """ the Connection is still in press and when the channel was closed by the broker
+                so treat as a serious error and close the connection 
+                """
+                self._connected_future.set_exception(
+                    NuropbTransportError(
+                        description=reason_description,
+                        exception=reason,
+                        close_connection=True,
+                    )
+                )
+
+            elif self._connected_future and self._connected_future.done():
+                """ The channel was close after the connection was established
+                """
+                if reason.reply_code in (403, 404):
+                    """ There is no point in auto reconnecting when access is refused, so
+                    shut the connection down.
+                    """
+                    asyncio.create_task(self.stop())
+                else:
+                    """ It's ok to try and re-open the channel
+                    """
+                    logging.info("Re-opening channel")
+                    self.open_channel()
+
+        elif not isinstance(reason, ChannelClosedByClient):
+            """ Log the reason for the channel close and allow the re-open process to continue 
+            """
+            reason_description = (
+                f"RabbitMQ channel closed ({reason.reply_code})."
+                f"{type(reason).__name__}: {reason}"
+            )
+            logger.warning(reason_description)
 
     def declare_service_queue(self, frame: pika.frame.Method) -> None:
         """Refresh the request queue on RabbitMQ by invoking the Queue.Declare RPC command. When it
@@ -671,8 +767,10 @@ class RMQTransport:
 
     def on_basic_qos_ok(self, _frame: pika.frame.Method) -> None:
         """Invoked by pika when the Basic.QoS method has completed. At this
-        point we will start consuming messages by calling start_consuming
-        which will invoke the needed RPC commands to start the process.
+        point we will start consuming messages.
+
+        A callback is added that will be invoked if RabbitMQ cancels the consumer for some reason.
+        If RabbitMQ does cancel the consumer, on_consumer_cancelled will be invoked by pika.
 
         :param pika.frame.Method _frame: The Basic.QosOk response frame
 
@@ -680,15 +778,13 @@ class RMQTransport:
         logger.info("QOS set to: %d", self._prefetch_count)
         logger.info("Configure message consumption")
 
-        """Add a callback that will be invoked if RabbitMQ cancels the consumer for some reason. 
-        If RabbitMQ does cancel the consumer, on_consumer_cancelled will be invoked by pika.
-        """
         if self._channel is None:
             raise RuntimeError("RMQ transport channel is not open")
 
         self._channel.add_on_cancel_callback(self.on_consumer_cancelled)
 
-        # Start consuming the response queue these need their own handler as the ack type is automatic
+        # Start consuming the response queue, message from this queue require their own flow, hence
+        # a dedicated handler is set up. The ack type is automatic.
         self._consumer_tags.add(
             self._channel.basic_consume(
                 on_message_callback=functools.partial(
@@ -700,7 +796,7 @@ class RMQTransport:
             )
         )
 
-        # Start consuming the requests queue
+        # Start consuming the requests queue and handle the service message flow. ack type is manual.
         if not self._client_only:
             logger.info("Ready to consume requests, events and commands")
             self._consumer_tags.add(
@@ -769,18 +865,21 @@ class RMQTransport:
                     payload=body,
                     correlation_id=correlation_id,
                 )
-            nuropb_payload = decode_payload(body, "json")
-            request_method = nuropb_payload["method"]
-            nuropb_payload["tag"] = nuropb_type
-            nuropb_payload["error"] = {
-                "error": "NuropbNotDeliveredError",
-                "description": f"Service {method.routing_key} not available. unable to call method {request_method}",
-            }
-            nuropb_payload["result"] = None
-            nuropb_payload.pop("service", None)
-            nuropb_payload.pop("method", None)
-            nuropb_payload.pop("params", None)
-            nuropb_payload.pop("reply_to", None)
+            request_payload = cast(RequestPayloadDict, decode_payload(body, "json"))
+            request_method = request_payload["method"]
+            nuropb_payload = ResponsePayloadDict(
+                tag="response",
+                correlation_id=correlation_id,
+                context=request_payload["context"],
+                trace_id=trace_id,
+                result=None,
+                error={
+                    "error": "NuropbNotDeliveredError",
+                    "description": f"Service {method.routing_key} not available. unable to call method {request_method}",
+                },
+                warning=None,
+                reply_to="",
+            )
             message = TransportRespondPayload(
                 nuropb_protocol=NUROPB_PROTOCOL_VERSION,
                 correlation_id=correlation_id,
@@ -810,15 +909,6 @@ class RMQTransport:
             )
             self._message_callback(message, message_complete_callback, metadata)
 
-        if verbose:
-            raise NuropbNotDeliveredError(
-                (
-                    f"Could not route message {nuropb_type} with "
-                    f"correlation_id: {correlation_id} "
-                    f"trace_id: {trace_id} "
-                    f": {method.reply_code}, {method.reply_text}"
-                )
-            )
 
     def send_message(
         self,
@@ -830,11 +920,12 @@ class RMQTransport:
     ) -> None:
         """Send a message to over the RabbitMQ Transport
 
-            TODO: Consider the alternative handling if the channel that's closed.
-            - Wait and retry on a new channel?
-            - setup a retry queue?
-            - should there be a high water mark for the number of retries?
-            - should new messages not be consumed until the channel is re-established and retry queue drained?
+            TODO: Consider alternative handling when the channel is closed.
+                also refer to the notes in the on_channel_closed method.
+                - Wait and retry on a new channel?
+                - setup a retry queue?
+                - should there be a high water mark for the number of retries?
+                - should new messages not be consumed until the channel is re-established and retry queue drained?
 
         :param Dict[str, Any] payload: The message contents
         :param expiry: The message expiry in milliseconds
@@ -1401,10 +1492,10 @@ encrypted: {encrypted}
         """Tell RabbitMQ that you would like to stop consuming by sending the
         Basic.Cancel RPC command.
         """
-        if self._channel:
-            logger.info("Sending a Basic.Cancel RPC command to RabbitMQ")
-            logger.info("Closing consumers %s", self._consumer_tags)
-
+        if self._channel is None or self._channel.is_closed:
+            return
+        else:
+            logger.info("Stopping consumers and sending a Basic.Cancel command to RabbitMQ")
             all_consumers_closed: Awaitable[bool] = asyncio.Future()
 
             def _on_cancel_ok(frame: pika.frame.Method) -> None:
@@ -1414,18 +1505,25 @@ encrypted: {encrypted}
                     all_consumers_closed.set_result(True)  # type: ignore[attr-defined]
 
             for consumer_tag in self._consumer_tags:
-                if self._channel:
+                if self._channel and self._channel.is_open:
                     self._channel.basic_cancel(consumer_tag, _on_cancel_ok)
-            logger.info(
-                "Waiting for %ss for consumers to close", CONSUMER_CLOSED_WAIT_TIMEOUT
-            )
+
             try:
-                await asyncio.wait_for(
-                    all_consumers_closed, timeout=CONSUMER_CLOSED_WAIT_TIMEOUT
+                logger.info(
+                    "Waiting for %ss for consumers to close", CONSUMER_CLOSED_WAIT_TIMEOUT
                 )
+                await asyncio.wait_for(
+                    all_consumers_closed,
+                    timeout=CONSUMER_CLOSED_WAIT_TIMEOUT
+                )
+                logger.info("Consumers to gracefully closed")
             except asyncio.TimeoutError:
                 logger.error(
                     "Timed out while waiting for all consumers to gracefully close"
+                )
+            except Exception as err:
+                logger.exception(
+                    "Error while waiting for all consumers to gracefully close: %s", err
                 )
 
             if len(self._consumer_tags) != 0:
@@ -1434,7 +1532,6 @@ encrypted: {encrypted}
                 )
 
             self._consuming = False
-            logger.info("RabbitMQ acknowledged the cancellation of the consumer")
             self.close_channel()
 
     def close_channel(self) -> None:

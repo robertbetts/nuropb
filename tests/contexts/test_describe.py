@@ -103,6 +103,7 @@ class OrderManagementService:
     Some useful documentation to describe the characteristic of the service and its purpose
     """
     _service_name = "oms_v2"
+    _instance_id = uuid4().hex
     _version = "2.0.1"
     _private_key = rsa.generate_private_key(
         public_exponent=65537, key_size=2048, backend=default_backend()
