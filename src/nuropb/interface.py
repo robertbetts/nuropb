@@ -15,7 +15,7 @@ from typing import (
 
 logger = logging.getLogger(__name__)
 
-NUROPB_VERSION = "0.1.6"
+NUROPB_VERSION = "0.1.7"
 NUROPB_PROTOCOL_VERSION = "0.1.1"
 NUROPB_PROTOCOL_VERSIONS_SUPPORTED = ("0.1.1",)
 NUROPB_MESSAGE_TYPES = (

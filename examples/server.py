@@ -84,10 +84,13 @@ async def main():
     try:
         logging.info("Service %s ready", service_example._service_name)
         await asyncio.Event().wait()
-    except KeyboardInterrupt:
         logging.info("Shutting down signal received")
-
-    logging.info("Service %s done", service_example._service_name)
+        await container.stop()
+    except BaseException as err:
+        logging.info("Shutting down. %s: %s", type(err).__name__, err)
+        await container.stop()
+    finally:
+        logging.info("Service %s done", service_example._service_name)
 
 
 if __name__ == "__main__":
@@ -99,4 +102,7 @@ if __name__ == "__main__":
     logging.getLogger("pika").setLevel(logging.CRITICAL)
     logging.getLogger("etcd3").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass

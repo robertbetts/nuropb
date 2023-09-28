@@ -98,7 +98,7 @@ async def main():
     total_sample_count = 0
     total_request_time = 0
 
-    batch_size = 500
+    batch_size = 5000
     number_of_batches = 5
     ioloop = asyncio.get_event_loop()
 
