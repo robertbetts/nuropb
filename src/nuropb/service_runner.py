@@ -311,12 +311,6 @@ class ServiceContainer(ServiceRunner):
             """
             logger.error(f"Error during leader nomination: {e}")
             logger.exception(e)
-            # TODO: Look into handling etcd reconnections, as it's messy needing to negotiate
-            #   existing threads and watchers. The code below has been deliberately commented out
-            """
-            logger.info("called init_etcd() to re-initiate the etcd connection")
-            task = asyncio.create_task(self.init_etcd(on_startup=False))
-            """
 
     def update_etcd_service_property(self, key: str, value: Any) -> bool:
         """update_etcd_service_property: updates the etcd3 service property.
