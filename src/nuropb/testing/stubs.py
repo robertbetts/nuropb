@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
 from uuid import uuid4
+import os
 
 from nuropb.contexts.context_manager import NuropbContextManager
 from nuropb.contexts.context_manager_decorator import nuropb_context
@@ -10,6 +11,9 @@ from nuropb.contexts.describe import publish_to_mesh
 from nuropb.interface import NuropbCallAgain, NuropbSuccess
 
 logger = logging.getLogger(__name__)
+
+
+IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
 
 def get_claims_from_token(bearer_token: str) -> Dict[str, Any] | None:
@@ -56,7 +60,7 @@ class ServiceExample(ServiceStub):
     _method_call_count: int
     _raise_call_again_error: bool
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
         self._method_call_count = 0
         self._raise_call_again_error = True
@@ -81,7 +85,7 @@ class ServiceExample(ServiceStub):
 
     @nuropb_context
     @publish_to_mesh(authorise_func=get_claims_from_token)
-    def test_requires_user_claims(self, ctx, **kwargs: Any) -> Any:
+    def test_requires_user_claims(self, ctx: NuropbContextManager, **kwargs: Any) -> Any:
         assert isinstance(self, ServiceExample)
         assert isinstance(ctx, NuropbContextManager)
         self._method_call_count += 1
@@ -90,7 +94,7 @@ class ServiceExample(ServiceStub):
 
     @nuropb_context
     @publish_to_mesh(authorise_func=get_claims_from_token, requires_encryption=True)
-    def test_requires_encryption(self, ctx, **kwargs: Any) -> Any:
+    def test_requires_encryption(self, ctx: NuropbContextManager, **kwargs: Any) -> Any:
         assert isinstance(self, ServiceExample)
         assert isinstance(ctx, NuropbContextManager)
         self._method_call_count += 1

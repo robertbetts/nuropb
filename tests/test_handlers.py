@@ -14,7 +14,6 @@ from nuropb.service_handlers import execute_request
 logger = logging.getLogger()
 
 
-@pytest.mark.asyncio
 def test_sync_handler_call(service_instance):
     correlation_id = uuid4().hex
     trace_id = uuid4().hex

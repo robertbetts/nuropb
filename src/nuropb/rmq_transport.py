@@ -1,6 +1,6 @@
 import logging
 import functools
-from typing import List, Set, Optional, Any, Dict, Awaitable, Literal, TypedDict
+from typing import List, Set, Optional, Any, Dict, Awaitable, Literal, TypedDict, cast
 import asyncio
 import time
 
@@ -25,7 +25,7 @@ from nuropb.interface import (
     NUROPB_PROTOCOL_VERSION,
     NUROPB_VERSION,
     NuropbNotDeliveredError,
-    NuropbCallAgainReject,
+    NuropbCallAgainReject, RequestPayloadDict, ResponsePayloadDict,
 )
 from nuropb.rmq_lib import (
     rmq_api_url_from_amqp_url,
@@ -352,7 +352,7 @@ class RMQTransport:
         amqp_url = amqp_url or self._amqp_url
         if amqp_url is None:
             raise ValueError("amqp_url is not provided")
-        rmq_api_url = rmq_api_url or rmq_api_url_from_amqp_url(amqp_url)
+        # rmq_api_url = rmq_api_url or rmq_api_url_from_amqp_url(amqp_url)
         if rmq_api_url is None:
             raise ValueError("rmq_api_url is not provided")
         try:
@@ -435,7 +435,7 @@ class RMQTransport:
             self._disconnected_future = self.disconnect()
             await self._disconnected_future
 
-    def connect(self) -> Awaitable[bool]:
+    def connect(self) -> asyncio.Future[bool]:
         """This method initiates a connection to RabbitMQ, returning the connection handle.
         When the connection is established, the on_connection_open method
         will be invoked by pika.
@@ -475,12 +475,11 @@ class RMQTransport:
         """
         if self._connection is None:
             logger.info("RMQ transport is not connected")
-
-        if self._connection.is_closing or self._connection.is_closed:
+        elif self._connection.is_closing or self._connection.is_closed:
             logger.info("RMQ transport is already closing or closed")
 
-        if not self._connected:
-            disconnected_future = asyncio.Future()
+        if self._connection is None or not self._connected:
+            disconnected_future: asyncio.Future[bool] = asyncio.Future()
             disconnected_future.set_result(True)
             return disconnected_future
 
@@ -866,18 +865,21 @@ class RMQTransport:
                     payload=body,
                     correlation_id=correlation_id,
                 )
-            nuropb_payload = decode_payload(body, "json")
-            request_method = nuropb_payload["method"]
-            nuropb_payload["tag"] = nuropb_type
-            nuropb_payload["error"] = {
-                "error": "NuropbNotDeliveredError",
-                "description": f"Service {method.routing_key} not available. unable to call method {request_method}",
-            }
-            nuropb_payload["result"] = None
-            nuropb_payload.pop("service", None)
-            nuropb_payload.pop("method", None)
-            nuropb_payload.pop("params", None)
-            nuropb_payload.pop("reply_to", None)
+            request_payload = cast(RequestPayloadDict, decode_payload(body, "json"))
+            request_method = request_payload["method"]
+            nuropb_payload = ResponsePayloadDict(
+                tag="response",
+                correlation_id=correlation_id,
+                context=request_payload["context"],
+                trace_id=trace_id,
+                result=None,
+                error={
+                    "error": "NuropbNotDeliveredError",
+                    "description": f"Service {method.routing_key} not available. unable to call method {request_method}",
+                },
+                warning=None,
+                reply_to="",
+            )
             message = TransportRespondPayload(
                 nuropb_protocol=NUROPB_PROTOCOL_VERSION,
                 correlation_id=correlation_id,

@@ -12,7 +12,7 @@ from nuropb.interface import (
 )
 
 
-class TestTransport:
+class TstTransport:
     def __init__(self, **kwargs):
         self.kwargs = kwargs
         self.started = False
@@ -28,7 +28,7 @@ class TestTransport:
         return self.started
 
 
-class TestInterface(NuropbInterface):
+class TstInterface(NuropbInterface):
     _leader: bool
     _transport: object
 
@@ -145,10 +145,10 @@ class TestInterface(NuropbInterface):
 async def test_basic_interface():
     service_name = "service_name"
     instance_id = uuid4().hex
-    interface = TestInterface(
+    interface = TstInterface(
         service_name=service_name,
         instance_id=instance_id,
-        transport_class=TestTransport,
+        transport_class=TstTransport,
         transport_settings={},
     )
     assert interface.service_name == service_name
@@ -164,10 +164,10 @@ async def test_basic_interface():
 async def test_interface_send_request():
     service_name = "service_name"
     instance_id = uuid4().hex
-    interface = TestInterface(
+    interface = TstInterface(
         service_name=service_name,
         instance_id=instance_id,
-        transport_class=TestTransport,
+        transport_class=TstTransport,
         transport_settings={},
     )
     await interface.connect()

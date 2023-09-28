@@ -7,7 +7,7 @@ from cryptography.hazmat.primitives import serialization
 
 logger = logging.getLogger(__name__)
 
-AuthoriseFunc = Callable[[str], Dict[str, Any]]
+AuthoriseFunc = Callable[[str], Optional[Dict[str, Any]]]
 
 
 def method_visible_on_mesh(method: Callable[..., Any]) -> bool:
@@ -87,10 +87,21 @@ def publish_to_mesh(
 
 
 def describe_service(class_instance: object) -> Dict[str, Any] | None:
-    """Returns a description of the class methods that will be exposed to the service mesh"""
+    """Returns a description of the class methods that will be exposed to the service mesh
+    """
+    service_info = {
+        "service_name": "",
+        "service_version": "",
+        "description": "",
+        "encrypted_methods": [],
+        "methods": {},
+        "warnings": [],
+    }
+
     if class_instance is None:
         logger.warning("No service class base has been input")
-        return None
+        service_info["warnings"].append("No service class base")
+
     else:
         service_name = getattr(class_instance, "_service_name", None)
         service_description = getattr(class_instance, "__doc__", None)
@@ -174,18 +185,19 @@ def describe_service(class_instance: object) -> Dict[str, Any] | None:
             }
             methods.append((name, method_spec))
 
-        service_info = {
+        service_info.update({
             "service_name": service_name,
             "service_version": service_version,
             "description": service_description,
             "encrypted_methods": service_has_encrypted_methods,
             "methods": dict(methods),
-        }
+        })
 
         if service_has_encrypted_methods:
             private_key = service_name = getattr(class_instance, "_private_key", None)
             if private_key is None:
-                raise ValueError(
+                service_info["warnings"].append("Service has encrypted methods but no private key has been set.")
+                logger.debug(
                     f"Service {service_name} has encrypted methods but no private key has been set"
                 )
 

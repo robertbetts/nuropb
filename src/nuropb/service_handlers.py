@@ -59,7 +59,7 @@ def error_dict_from_exception(exception: Exception | BaseException) -> Dict[str,
     :param exception:
     :return:
     """
-    if hasattr(exception, "to_dict"):
+    if isinstance(exception, NuropbException):
         return exception.to_dict()
 
     if hasattr(exception, "description"):
@@ -266,7 +266,7 @@ def handle_execution_result(
     :param message_complete_callback:
     :return:
     """
-    error = None
+    error: BaseException | Dict[str, Any] | None = None
     acknowledgement: AcknowledgeAction = "ack"
     if asyncio.isfuture(result):
         error = result.exception()
@@ -303,10 +303,15 @@ def handle_execution_result(
 
             Do not send a response for commands
             """
+            if isinstance(error, (Exception, BaseException)):
+                pyload_error = error_dict_from_exception(error)
+            else:
+                pyload_error = error
+
             payload = ResponsePayloadDict(
                 tag="response",
                 result=result,
-                error=error,
+                error=pyload_error,
                 correlation_id=service_message["correlation_id"],
                 trace_id=service_message["trace_id"],
                 context=service_message["nuropb_payload"]["context"],

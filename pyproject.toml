@@ -47,6 +47,7 @@ env_files = [".env_test"]
 testpaths = ["tests"]
 
 [tool.pytest.ini_options]
+asyncio_mode = "strict"
 log_cli = true
 log_level = "DEBUG"
 log_cli_format = " %(levelname).1s %(asctime)s,%(msecs)d %(module)s %(lineno)s %(message)s"

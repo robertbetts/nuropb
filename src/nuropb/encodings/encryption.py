@@ -101,12 +101,12 @@ class Encryptor:
         """
         self._service_public_keys[service_name] = public_key
 
-    def get_public_key(self, service_name: str) -> rsa.RSAPublicKey:
+    def get_public_key(self, service_name: str) -> rsa.RSAPublicKey | None:
         """Get a public key for a service
         :param service_name: str
         :return: rsa.RSAPublicKey
         """
-        return self._service_public_keys.get[service_name]
+        return self._service_public_keys.get(service_name)
 
     def has_public_key(self, service_name: str) -> bool:
         """Check if a service has a public key
@@ -142,7 +142,12 @@ class Encryptor:
 
         if service_name is None:
             # Mode 4, get public key from the private key
-            public_key = self._private_key.public_key()
+            if self._private_key is None:
+                raise ValueError(
+                    f"Service public key not found for service: {self._service_name}"
+                )  # pragma: no cover
+            else:
+                public_key = self._private_key.public_key()
         else:
             # Mode 1, get public key from the destination service's public key
             public_key = self._service_public_keys[service_name]
@@ -175,6 +180,10 @@ class Encryptor:
         encrypted_key, encrypted_payload = payload.split(b".", 1)
         if correlation_id not in self._correlation_id_symmetric_keys:
             """Mode 3, use public key from the private key to decrypt key"""
+            if self._private_key is None:
+                raise ValueError(
+                    f"Service public key not found for service: {self._service_name}"
+                )  # pragma: no cover
             key = decrypt_key(encrypted_key, self._private_key)
             #  remember the key for this correlation_id to encrypt the response
             self._correlation_id_symmetric_keys[correlation_id] = key

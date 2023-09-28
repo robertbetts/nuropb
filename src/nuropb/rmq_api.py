@@ -533,7 +533,7 @@ class RMQAPI(NuropbInterface):
                     )
                 return service_info
             except Exception as err:
-                logger.error(f"error loading the public key for {service_name}: {err}")
+                raise ValueError(f"error loading the public key for {service_name}: {err}")
 
     async def requires_encryption(self, service_name: str, method_name: str) -> bool:
         """requires_encryption: Queries the service discovery information for the service_name

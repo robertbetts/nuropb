@@ -5,6 +5,7 @@ from uuid import uuid4
 import os
 
 import pytest
+import pytest_asyncio
 
 from nuropb.rmq_api import RMQAPI
 from nuropb.rmq_lib import (
@@ -15,12 +16,20 @@ from nuropb.rmq_lib import (
     configure_nuropb_rmq,
 )
 from nuropb.rmq_transport import RMQTransport
-from nuropb.testing.stubs import ServiceExample
+from nuropb.testing.stubs import IN_GITHUB_ACTIONS, ServiceExample
 
 logging.getLogger("pika").setLevel(logging.WARNING)
 
-IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
+@pytest.fixture(scope="session")
+def etcd_config():
+    if IN_GITHUB_ACTIONS:
+        return None
+    else:
+        dict(
+            host="localhost",
+            port=2379,
+        )
 
 @pytest.fixture(scope="session")
 def test_settings():
@@ -192,8 +201,8 @@ def service_instance():
     )
 
 
-@pytest.fixture(scope="function")
-def test_mesh_service(test_settings, test_rmq_url, service_instance):
+@pytest_asyncio.fixture(scope="function")
+async def test_mesh_service(test_settings, test_rmq_url, service_instance):
     service_name = test_settings["service_name"]
     instance_id = uuid4().hex
     transport_settings = dict(
@@ -214,9 +223,11 @@ def test_mesh_service(test_settings, test_rmq_url, service_instance):
     )
     yield service_api
 
+    await service_api.disconnect()
 
-@pytest.fixture(scope="function")
-def test_mesh_client(test_rmq_url, test_settings, test_mesh_service):
+
+@pytest_asyncio.fixture(scope="function")
+async def test_mesh_client(test_rmq_url, test_settings, test_mesh_service):
     instance_id = uuid4().hex
     settings = test_mesh_service.transport.rmq_configuration
     client_transport_settings = dict(
@@ -232,3 +243,5 @@ def test_mesh_client(test_rmq_url, test_settings, test_mesh_service):
         transport_settings=client_transport_settings,
     )
     yield client_api
+
+    await client_api.disconnect()

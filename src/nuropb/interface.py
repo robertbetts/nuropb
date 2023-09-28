@@ -276,6 +276,11 @@ class NuropbTransportError(NuropbException):
         )
         self._close_connection = close_connection
 
+    @property
+    def close_connection(self) -> bool:
+        """close_connection: returns True if the connection should be closed"""
+        return self._close_connection
+
 
 class NuropbMessageError(NuropbException):
     """NuropbMessageError: represents an error that occurred during the encoding or decoding of a
