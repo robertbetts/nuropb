@@ -24,16 +24,14 @@ from nuropb.interface import (
     AcknowledgeAction,
     NUROPB_PROTOCOL_VERSION,
     NUROPB_VERSION,
-    NuropbNotDeliveredError,
     NuropbCallAgainReject, RequestPayloadDict, ResponsePayloadDict,
 )
 from nuropb.rmq_lib import (
-    rmq_api_url_from_amqp_url,
     create_virtual_host,
     configure_nuropb_rmq, get_connection_parameters,
 )
-from nuropb import service_handlers
-from nuropb.service_handlers import (
+from nuropb.contexts import service_handlers
+from nuropb.contexts.service_handlers import (
     create_transport_response_from_rmq_decode_exception,
     error_dict_from_exception,
 )
@@ -457,7 +455,12 @@ class RMQTransport:
 
         self._connected_future = asyncio.Future()
 
-        connection_parameters = get_connection_parameters(self._amqp_url)
+        connection_parameters = get_connection_parameters(
+            amqp_url = self._amqp_url,
+            name=self._service_name,
+            instance_id=self._instance_id,
+            client_only=self._client_only,
+        )
         conn = AsyncioConnection(
             parameters=connection_parameters,
             on_open_callback=self.on_connection_open,
@@ -909,7 +912,6 @@ class RMQTransport:
             )
             self._message_callback(message, message_complete_callback, metadata)
 
-
     def send_message(
         self,
         payload: Dict[str, Any],
@@ -1135,6 +1137,10 @@ class RMQTransport:
         elif acknowledgement == "nack":
             response_messages = []
 
+        """ **NOTE** if this call fails, due to a reconnect or a new channel created between the time
+        the message was received and now when the message is acknowledged. the message will be 
+        received again. This is a feature of RabbitMQ and is not a bug.
+        """
         self.acknowledge_service_message(
             channel, delivery_tag, acknowledgement, redelivered
         )

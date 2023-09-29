@@ -29,7 +29,7 @@ class QuickExampleService:
     _instance_id = uuid4().hex
 
     @nuropb_context
-    @publish_to_mesh(authorise_func=get_claims_from_token)
+    @publish_to_mesh(authorize_func=get_claims_from_token)
     def test_requires_user_claims(self, ctx, **kwargs: Any) -> str:
         logger.info("test_requires_user_claims called")
         assert isinstance(ctx, NuropbContextManager)

@@ -1,9 +1,9 @@
-# Service Context Management and Mesh Publication Features
+# Service Mesh Context Management
 
-## Context Manager and Decorator
+## NuroPb Context Manager and Decorator
 When a service instance method is decorated with @nuropb_context, a NuropbContextManager instance will
 be injected into the method, and usually into an argument named ctx. This context manager is callable
-with the context `with` statement. Once the context manager has exited, it is considered done and 
+via the `with` statement. Once the context manager has exited, it is considered done and 
 immutable.
 
 ### @nuropb_context
@@ -16,36 +16,74 @@ def nuropb_context(
     authorise_key: Optional[str] = None,
     authorise_func: Optional[callable] = None,
 ) -> Any:
+    """
+    :param context_parameter: str, (ctx) alternative context argument name
+    :param suppress_exceptions: bool, (True), if False then exceptions will be raised during `with ctx:`      
+    """
 ```
 This decorator function injects a NuropbContext instance into a method that has ctx:NuropbContext
 as an argument. The ctx parameter of the decorated method is hidden from the method's signature 
 visible on the service mesh.
 
+**NOTE:** This decorator is intended only for class methods, using it with functions will have
+unexpected results and is likely to result in either and compile time or runtime exception.
+
+This decorator if used in conjunction with the @publish_to_mesh decorator, must be applied after.
+```python
+    @nuropb_context
+    @publish_to_mesh(authorise_func=get_claims_from_token, requires_encryption=True)
+    def test_requires_encryption(self, ctx: NuropbContextManager, **kwargs: Any) -> Any:
+        ...
+```
 The name of the ctx parameter can be changed by entering and alternative name using the 
 context_parameter argument.
+```python
+    @nuropb_context
+    @publish_to_mesh(authorise_func=get_claims_from_token, requires_encryption=True, context_parameter="myctx")
+    def test_requires_encryption(self, myctx: NuropbContextManager, **kwargs: Any) -> Any:
+        ...
+```
 
 Any caller of class_instance.method(ctx=ctx) can either pass a NuropbContext instance or a dict. 
-If a dict is passed, a NuropbContext instance will be created from the dict.
+If a dict is passed, a NuropbContext instance will be created from the dict and injected into
+the method.
 
-*NOTE* This decorator is intended only for class methods, using it with functions will have 
-unexpected results and is likely to result in either and compile or runtime exception.
 
-:param original_method: reserved for the @decorator logic 
-:param context_parameter: str, (ctx) alternative context argument name
-:param suppress_exceptions: bool, (True), if False then exceptions will be raised during with ctx as ...:  
-:param authorise_func: callable(token: str) -> dict
-:param authorise_key: str,
-:return: a decorated method
+## Service Mesh Configuration Decorator
 
-## Describe
-The published methods of a service are made available to all participants on a service mesh. The 
-specification follows this example:
+When wrapping a class with the nuropb service mesh api, all public methods are made available to all participants 
+connected to the service mesh.  Any participant can request a service specification from any service, and will 
+receive a json object describing the service and its methods.
+
+### @nuropb_context
 ```python
-service_api_spec = {
-    "name": "order_management_service",
+def publish_to_mesh(
+        original_method: Optional[Callable[..., Any]] = None,
+        *,
+        hide_method: Optional[bool] = False,
+        authorize_func: Optional[AuthorizeFunc] = None,
+        context_token_key: Optional[str] = "Authorization",
+        requires_encryption: Optional[bool] = False,
+        description: Optional[str] = None,
+) -> Any:
+    """
+    :param hide_method: bool, (False) if True then the method will not be published to the service mesh
+    :param authorize_func: callable(token: str) -> dict
+    :param context_token_key: str, ("Authorization"), incoming request context key containing the bearer token
+    :param requires_encryption: bool, (False) if True then the service mesh expect and encrypted payload
+    :param description: str, if present then override the methods doc string
+    """
+```
+
+Example Mesh Service Describe Information:
+```python
+{
     "service_name": "order_management_service",
-    "published_events": [],
-    "service_model": [],
+    "service_version": "0.1.0",
+    "description": "A service the manages orders",
+    "warnings": [],
+    "encrypted_methods": [],
+    "public_key": None,
     "methods": [
         {
             "name": "create_order",

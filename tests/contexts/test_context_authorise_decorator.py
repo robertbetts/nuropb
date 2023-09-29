@@ -25,7 +25,7 @@ class AuthoriseServiceClass:
     _service_name: str
 
     @nuropb_context
-    @publish_to_mesh(context_token_key="Authorization", authorise_func=authorise_token)
+    @publish_to_mesh(context_token_key="Authorization", authorize_func=authorise_token)
     def hello_requires_auth(
         self, ctx: NuropbContextManager, param1: str
     ) -> Dict[str, Any]:
