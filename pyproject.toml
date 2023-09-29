@@ -18,6 +18,9 @@ packages = [
     {include = "nuropb", from = "src"}
 ]
 
+[tool.poetry.extras]
+docs = ["sphinx", "sphinx_rtd_theme"]
+
 [tool.poetry.dependencies]
 python = ">=3.9,<3.12"
 python-dotenv = "^1.0.0"
