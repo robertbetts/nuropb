@@ -203,7 +203,7 @@ def service_instance():
 
 
 @pytest_asyncio.fixture(scope="function")
-async def test_mesh_service(test_settings, rmq_settings, service_instance):
+async def mesh_service(test_settings, rmq_settings, service_instance):
     service_name = test_settings["service_name"]
     instance_id = uuid4().hex
     transport_settings = dict(
@@ -228,9 +228,9 @@ async def test_mesh_service(test_settings, rmq_settings, service_instance):
 
 
 @pytest_asyncio.fixture(scope="function")
-async def test_mesh_client(rmq_settings, test_settings, test_mesh_service):
+async def mesh_client(rmq_settings, test_settings, mesh_service):
     instance_id = uuid4().hex
-    settings = test_mesh_service.transport.rmq_configuration
+    settings = mesh_service.transport.rmq_configuration
     client_transport_settings = dict(
         dl_exchange=settings["dl_exchange"],
         prefetch_count=test_settings["prefetch_count"],

@@ -5,6 +5,7 @@ from typing import Dict, Any, Optional
 from urllib.parse import urlparse
 from contextlib import contextmanager
 import ssl
+import getpass
 
 import requests
 import pika
@@ -50,18 +51,30 @@ def rmq_api_url_from_amqp_url(
     return build_rmq_api_url(scheme, host, port, username, password)
 
 
-def get_client_connection_properties(name: Optional[str] = None, instance_id: Optional[str] = None) -> Dict[str, str]:
+def get_client_connection_properties(
+        name: Optional[str] = None,
+        instance_id: Optional[str] = None,
+        client_only: Optional[bool] = None,
+) -> Dict[str, str]:
     """Returns the client connection properties for the transport"""
+    try:
+        env_userid = getpass.getuser()
+    except:
+        env_userid = None
+
     properties = {
         "product": "Nuropb",
         "version": NUROPB_VERSION,
         "protocol": NUROPB_PROTOCOL_VERSION,
         "platform": "Python",
+        "env_userid": env_userid,
     }
     if name:
         properties["name"] = name
     if instance_id:
         properties["instance_id"] = instance_id
+    if client_only:
+        properties["client_only"] = str(client_only).lower()
 
     return properties
 
@@ -70,12 +83,14 @@ def get_connection_parameters(
         amqp_url: str | Dict[str, Any],
         name: Optional[str] = None,
         instance_id: Optional[str] = None,
+        client_only: Optional[bool] = None,
         **overrides: Any
 ) -> pika.ConnectionParameters | pika.URLParameters:
     """Return the connection parameters for the transport
     :param amqp_url: the AMQP URL or connection parameters to use
     :param name: the name of the service or client
     :param instance_id: the instance id of the service or client
+    :param client_only:
     :param overrides: additional keyword arguments to override the connection parameters
     """
     if isinstance(amqp_url, dict):
@@ -86,7 +101,11 @@ def get_connection_parameters(
         pika_parameters = {
             "host": host,
             "port": port,
-            "client_properties": get_client_connection_properties(name=name, instance_id=instance_id),
+            "client_properties": get_client_connection_properties(
+                name=name,
+                instance_id=instance_id,
+                client_only=client_only,
+            ),
             "heartbeat": 60,
         }
         vhost = amqp_url.get("vhost", None)

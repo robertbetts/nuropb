@@ -1,13 +1,11 @@
-"""
+""" This module provides features that handle the execution of nuropb service messages: Requests, Commands and Events.
 
-# TODO: Consider if the checks below should be done here or in the service implementation,
-#       in addition if the service implementation, inherits from a NuroPb service base class
-#       then these checks and more could be done in the base class.
-# - TODO: check if the method is deprecated
-# - TODO: check user authentication and authorisation
-# - TODO: method validation (params, context)
-# - TODO: wrap execution within a context manager
-# - TODO: pass context to the service method
+Attempt is made to make the code agnostic to the underlying transport.
+
+ROADMAP Features and Considerations (in no particular order):
+- check if the method is deprecated
+- method parameter validation
+- post ack commit or rollback
 
 """
 import asyncio

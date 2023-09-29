@@ -9,17 +9,16 @@ _test_user_id_cache: Dict[str, Any] = {}
 
 
 class NuropbContextManager:
-    """This class is a context manager that can be used to manage the context transaction relating
-    to an incoming nuropb service message. when a class instance method is decorated with the
+    """This class is a context manager that's used to manage a transaction's context relating
+    to an incoming nuropb service message. When a class instance's method is decorated with the
     nuropb_context decorator, the context manager is instantiated and injected into the method
     as a ctx parameter.
 
-    The nuropb context manager is both a sync and async context manager, it also provides access
-    to a decorated method to the nuropb service mesh api. Events can be added to the context
-    manager and will be sent to the service mesh when the context manager exits. If an exception
-    is raised while the context manager is running, the exception is recorded and the context
-    transaction is considered to have failed. If any events were added to the context manager,
-    they are discarded.
+    The nuropb context manager is both a sync and async context manager. Events can be added
+    to the context manager and will be sent to the service mesh when the context manager
+    successfully exits. If an exception is raised while the context manager is in scope, the
+    exception is recorded and the transaction in context is considered to have failed. Any
+    events added to the context manager are discarded.
     """
 
     _suppress_exceptions: bool

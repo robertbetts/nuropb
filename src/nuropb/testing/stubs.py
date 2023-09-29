@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Any, Dict, Optional
 from cryptography.hazmat.backends import default_backend
@@ -67,6 +68,15 @@ class ServiceExample(ServiceStub):
 
     def test_method(self, **kwargs: Any) -> str:
         _ = kwargs
+        self._method_call_count += 1
+        return f"response from {self._service_name}.test_method"
+
+    async def do_async_task(self, **kwargs: Any) -> str:
+        if "sleep" in kwargs:
+            logger.info("performing sleep for %s", kwargs["sleep"])
+            await asyncio.sleep(kwargs["sleep"])
+            return f"performed task: sleep"
+
         self._method_call_count += 1
         return f"response from {self._service_name}.test_method"
 

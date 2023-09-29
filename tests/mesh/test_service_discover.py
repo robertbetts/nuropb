@@ -9,14 +9,14 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.asyncio
-async def test_requires_user_token(test_mesh_client, test_mesh_service):
+async def test_requires_user_token(mesh_client, test_mesh_service):
 
     await test_mesh_service.connect()
     assert test_mesh_service.connected is True
     logger.info("SERVICE API CONNECTED")
 
-    await test_mesh_client.connect()
-    assert test_mesh_client.connected is True
+    await mesh_client.connect()
+    assert mesh_client.connected is True
     logger.info("CLIENT CONNECTED")
 
     service = test_mesh_service.service_name
@@ -33,7 +33,7 @@ async def test_requires_user_token(test_mesh_client, test_mesh_service):
     )
     logger.info(f"response: {pformat(rpc_response)}")
 
-    await test_mesh_client.disconnect()
+    await mesh_client.disconnect()
     await test_mesh_service.disconnect()
 
     assert rpc_response["error"] is None
@@ -44,7 +44,7 @@ async def test_requires_user_token(test_mesh_client, test_mesh_service):
 
 
 @pytest.mark.asyncio
-async def test_mesh_service_describe(test_mesh_client, test_mesh_service):
+async def test_mesh_service_describe(mesh_client, test_mesh_service):
     """ Call the describe function for a service on the mesh. This should return a dictionary
     describing the service and its methods.
     """
@@ -53,8 +53,8 @@ async def test_mesh_service_describe(test_mesh_client, test_mesh_service):
     assert test_mesh_service.connected is True
     logger.info("SERVICE API CONNECTED")
 
-    await test_mesh_client.connect()
-    assert test_mesh_client.connected is True
+    await mesh_client.connect()
+    assert mesh_client.connected is True
     logger.info("CLIENT CONNECTED")
 
     service = test_mesh_service.service_name
@@ -73,7 +73,7 @@ async def test_mesh_service_describe(test_mesh_client, test_mesh_service):
 
 
 @pytest.mark.asyncio
-async def test_mesh_service_describe(test_mesh_client, test_mesh_service):
+async def test_mesh_service_describe(mesh_client, test_mesh_service):
     """ user the service mesh api helper function to call the describe function for a service on the mesh.
     Test that service metta information is cached in the mesh client.
     """
@@ -82,13 +82,13 @@ async def test_mesh_service_describe(test_mesh_client, test_mesh_service):
     assert test_mesh_service.connected is True
     logger.info("SERVICE API CONNECTED")
 
-    await test_mesh_client.connect()
-    assert test_mesh_client.connected is True
+    await mesh_client.connect()
+    assert mesh_client.connected is True
     logger.info("CLIENT CONNECTED")
 
     service_name = test_mesh_service.service_name
     logger.info(f"test_mesh_service.describe_service('{service_name}')")
-    service_info = await test_mesh_client.describe_service(
+    service_info = await mesh_client.describe_service(
         service_name=service_name,
     )
     logger.info(f"response: {pformat(service_info)}")
@@ -96,7 +96,7 @@ async def test_mesh_service_describe(test_mesh_client, test_mesh_service):
 
     service = test_mesh_service.service_name
     method = "test_requires_encryption"
-    public_key = await test_mesh_client.requires_encryption(
+    public_key = await mesh_client.requires_encryption(
         service_name=service,
         method_name=method
     )
@@ -114,20 +114,20 @@ async def test_mesh_service_describe(test_mesh_client, test_mesh_service):
 
 
 @pytest.mark.asyncio(async_timeout=10)
-async def test_mesh_service_encrypt(test_mesh_client, test_mesh_service):
+async def test_mesh_service_encrypt(mesh_client, test_mesh_service):
     """ user the service mesh api helper function to call the describe function for a service on the mesh.
     Test that service metta information is cached in the mesh client.
     """
 
     await test_mesh_service.connect()
-    await test_mesh_client.connect()
+    await mesh_client.connect()
     rmq_transport.verbose = True
 
     service = "test_service"
     method = "test_requires_encryption"
     logger.info(f"Requesting encrypted transport for request {service}.{method}")
 
-    encrypted = await test_mesh_client.requires_encryption(service, method)
+    encrypted = await mesh_client.requires_encryption(service, method)
     assert encrypted is True
     params = {}
     context = {
