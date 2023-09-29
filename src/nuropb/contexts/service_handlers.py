@@ -258,6 +258,10 @@ def handle_execution_result(
     * For service messages transport.on_service_message_complete() is used
     * For response messages transport.on_response_message_complete() is used.
 
+    #FUTURE: There is consideration of how to pass a context through this flow to until the transport
+    acknowledgement has completed. This is to allow for the possibility of a post ack commit or rollback.
+    It also allows to more flexible handling for events raised during requests, commands and incoming events
+
     :param service_message:
     :param result:
     :param message_complete_callback:
@@ -265,6 +269,9 @@ def handle_execution_result(
     """
     error: BaseException | Dict[str, Any] | None = None
     acknowledgement: AcknowledgeAction = "ack"
+    responses = []
+
+    # If this a Future, should it be checked that it's done, or probably has it already?
     if asyncio.isfuture(result):
         error = result.exception()
         if error is None:
@@ -274,57 +281,60 @@ def handle_execution_result(
             result = error
             acknowledgement = "reject"
 
-    responses = []
-    if service_message["nuropb_type"] == "event":
-        """No requirement to handle the instance._event_handler result, only to positively acknowledge the event"""
-        acknowledgement = "ack"
-    else:
-        if isinstance(result, (Exception, BaseException)):
-            """Create NuroPb response from an exception, and update acknowledgement response
+    if isinstance(result, BaseException):
+        """ Create NuroPb response from an exception, and update acknowledgement type.
+        NOTE: Some exceptions are special cases and not necessarily errors. For example, 
+        NuropbCallAgain and NuropbSuccess are not errors.
+        """
+        (
+            acknowledgement,
+            transport_response,
+        ) = create_transport_responses_from_exceptions(
+            service_message=service_message, exception=result
+        )
+        if service_message["nuropb_type"] == "request":
+            responses.extend(transport_response)
+        if verbose:
+            logger.exception(result)
 
-            Do not send a response for commands
-            """
-            (
-                acknowledgement,
-                transport_response,
-            ) = create_transport_responses_from_exceptions(
-                service_message=service_message, exception=result
-            )
-            """ Do not send a response for commands
-            """
-            if service_message["nuropb_type"] == "request":
-                responses.extend(transport_response)
+    if service_message["nuropb_type"] in ("event", "command"):
+        """There is no requirement to handle the response of instance._event_handler result, only to 
+        positively acknowledge the event. There is also no requirements to handle the response of 
+        a command, only to positively acknowledge the command.
+        """
+        pass  # Do nothing
 
-        elif service_message["nuropb_type"] == "request":
-            """Create NuroPb response from the service call result
+    if service_message["nuropb_type"] == "request":
+        """Create NuroPb response from the service call result
+        """
+        if isinstance(error, BaseException):
+            pyload_error = error_dict_from_exception(error)
+            if verbose:
+                logger.exception(result)
+        else:
+            pyload_error = error
 
-            Do not send a response for commands
-            """
-            if isinstance(error, (Exception, BaseException)):
-                pyload_error = error_dict_from_exception(error)
-            else:
-                pyload_error = error
-
-            payload = ResponsePayloadDict(
-                tag="response",
-                result=result,
-                error=pyload_error,
+        payload = ResponsePayloadDict(
+            tag="response",
+            result=result,
+            error=pyload_error,
+            correlation_id=service_message["correlation_id"],
+            trace_id=service_message["trace_id"],
+            context=service_message["nuropb_payload"]["context"],
+            warning=None,
+            reply_to="",
+        )
+        responses.append(
+            TransportRespondPayload(
+                nuropb_protocol=NUROPB_PROTOCOL_VERSION,
                 correlation_id=service_message["correlation_id"],
                 trace_id=service_message["trace_id"],
-                context=service_message["nuropb_payload"]["context"],
-                warning=None,
-                reply_to="",
+                ttl=None,
+                nuropb_type="response",
+                nuropb_payload=payload,
             )
-            responses.append(
-                TransportRespondPayload(
-                    nuropb_protocol=NUROPB_PROTOCOL_VERSION,
-                    correlation_id=service_message["correlation_id"],
-                    trace_id=service_message["trace_id"],
-                    ttl=None,
-                    nuropb_type="response",
-                    nuropb_payload=payload,
-                )
-            )
+        )
+
     message_complete_callback(responses, acknowledgement)
 
 
@@ -343,91 +353,91 @@ def execute_request(
     :param message_complete_callback: MessageCompleteFunction
     :return: None
     """
+
+    if service_message["nuropb_type"] not in ("request", "command", "event"):
+        description = f"Service execution not support for message type {service_message['nuropb_type']}"
+        err = NuropbHandlingError(
+            description=description,
+            payload=service_message["nuropb_payload"],
+            exception=None,
+        )
+        handle_execution_result(service_message, err, message_complete_callback)
+        return
+
     result = None
     try:
-        if service_message["nuropb_type"] not in ("request", "command", "event"):
-            raise NuropbHandlingError(
-                description=f"Service execution not support for message type {service_message['nuropb_type']}",
-                payload=service_message["nuropb_payload"],
-                exception=None,
-            )
 
-        """
-        correlation_id = service_message["correlation_id"]
-        trace_id = service_message["trace_id"]
-        """
         payload = service_message["nuropb_payload"]
 
         if service_message["nuropb_type"] == "event":
+
+            payload = service_message["nuropb_payload"]
             topic = payload["topic"]
             event = payload["event"]
             target = payload["target"]
             context = payload["context"]
-            if hasattr(service_instance, "_handle_event_"):
-                event_handler = getattr(service_instance, "_handle_event_")
-                if callable(event_handler):
-                    result = event_handler(topic, event, target, context)
-                else:
-                    raise NuropbHandlingError(
-                        description=f"error calling instance._event_handler for topic: {topic}",
-                        payload=payload,
-                        exception=None,
-                    )
-
-        elif service_message["nuropb_type"] in ("request", "command"):
-            service_name = payload["service"]
-            method_name = payload["method"]
-            params = payload["params"]
-
-            """ TODO: think about how to pass the context to the service executing the method
-            # context = payload["context"]
-            """
-
-            if method_name != "nuropb_describe" and (
-                method_name.startswith("_")
-                or not hasattr(service_instance, method_name)
-                or not callable(getattr(service_instance, method_name))
-            ):
-                exception_result = NuropbHandlingError(
-                    description="Unknown method {}".format(method_name),
+            event_handler = getattr(service_instance, "_handle_event_", None)
+            if event_handler and callable(event_handler):
+                result = event_handler(topic, event, target, context)
+            else:
+                result = NuropbHandlingError(
+                    description=f"error calling instance._event_handler for topic: {topic}",
                     payload=payload,
                     exception=None,
                 )
-                handle_execution_result(service_message, exception_result, message_complete_callback)
-                return
+            handle_execution_result(service_message, result, message_complete_callback)
+            return
 
-            try:
-                if method_name == "nuropb_describe":
-                    result = describe_service(service_instance)
+        # By inference service_message["nuropb_type"] in ("request", "command")
+
+        payload = service_message["nuropb_payload"]
+        service_name = payload["service"]
+        method_name = payload["method"]
+        params = payload["params"]
+
+        if method_name != "nuropb_describe" and (
+            method_name.startswith("_")
+            or not hasattr(service_instance, method_name)
+            or not callable(getattr(service_instance, method_name))
+        ):
+            exception_result = NuropbHandlingError(
+                description="Unknown method {}".format(method_name),
+                payload=payload,
+                exception=None,
+            )
+            handle_execution_result(service_message, exception_result, message_complete_callback)
+            return
+
+        try:
+            if method_name == "nuropb_describe":
+                result = describe_service(service_instance)
+            else:
+                service_instance_method = getattr(service_instance, method_name)
+                if method_requires_nuropb_context(service_instance_method):
+                    result = service_instance_method(
+                        service_message["nuropb_payload"]["context"], **params
+                    )
                 else:
-                    service_instance_method = getattr(service_instance, method_name)
-                    if method_requires_nuropb_context(service_instance_method):
-                        result = service_instance_method(
-                            service_message["nuropb_payload"]["context"], **params
-                        )
-                    else:
-                        result = getattr(service_instance, method_name)(**params)
+                    result = getattr(service_instance, method_name)(**params)
 
-            except NuropbException as err:
-                if verbose:
-                    logger.exception(err)
-                handle_execution_result(service_message, err, message_complete_callback)
-                return
-
-            except Exception as err:
-                if verbose:
-                    logger.exception(err)
-                error = f"{type(err).__name__}: {err}"
+        except BaseException as err:
+            if not isinstance(err, NuropbException):
+                description = (
+                    f"Runtime exception calling {service_name}.{method_name}:"
+                    f"{type(err).__name__}: {err}"
+                )
                 exception_result = NuropbException(
-                    description=f"Runtime exception calling {service_name}.{method_name}: {error}",
+                    description=description,
                     payload=payload,
                     exception=err,
                 )
-                handle_execution_result(service_message, exception_result, message_complete_callback)
-                return
+            else:
+                exception_result = err
+
+            handle_execution_result(service_message, exception_result, message_complete_callback)
+            return
 
         if asyncio.isfuture(result) or asyncio.iscoroutine(result):
-            # Asynchronous responses
 
             if is_future(result):
                 exception_result = ValueError(
@@ -449,10 +459,8 @@ def execute_request(
                 task.add_done_callback(future_done_callback)
 
         else:
-            # Synchronous responses
             handle_execution_result(service_message, result, message_complete_callback)
 
     except Exception as err:
-        if verbose:
-            logger.exception(err)
+        # For any potential uncaught exceptions
         handle_execution_result(service_message, err, message_complete_callback)

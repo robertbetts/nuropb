@@ -59,7 +59,8 @@ def get_client_connection_properties(
     """Returns the client connection properties for the transport"""
     try:
         env_userid = getpass.getuser()
-    except:
+    except Exception as e:
+        _ = e
         env_userid = None
 
     properties = {
