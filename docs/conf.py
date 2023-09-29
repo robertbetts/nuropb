@@ -3,8 +3,10 @@
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
-# -- Project information -----------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
+import os
+import sys
+import datetime
+from pathlib import Path
 
 # -- Path setup --------------------------------------------------------------
 
@@ -12,14 +14,18 @@
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
-import os
-import sys
+# sys.path.insert(0, os.path.abspath("../src"))
 
-sys.path.insert(0, os.path.abspath(".."))
+
+# -- Project information -----------------------------------------------------
+# https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
+
+
+year = datetime.datetime.now().year
 
 project = 'nuropb'
-copyright = '2023, Robert Betts'
 author = 'Robert Betts'
+copyright = f'{year}, {author}'
 release = '0.1.6'
 
 # -- General configuration ---------------------------------------------------
@@ -31,7 +37,19 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx.ext.autodoc",
     "sphinx_rtd_theme",
+    "sphinx.ext.autosummary",
+    # "sphinx.ext.opengraph",
+    # "sphinxcontrib.spelling",
+    # "sphinx_copybutton",
+    "autoapi.extension",
+    "nbsphinx",
 ]
+spelling_warning = True
+spelling_show_suggestions = True
+
+autoapi_type = "python"
+autoapi_dirs = ["../src"]
+
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
