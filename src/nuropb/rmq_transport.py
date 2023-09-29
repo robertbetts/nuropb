@@ -30,8 +30,8 @@ from nuropb.rmq_lib import (
     create_virtual_host,
     configure_nuropb_rmq, get_connection_parameters,
 )
-from nuropb import service_handlers
-from nuropb.service_handlers import (
+from nuropb.contexts import service_handlers
+from nuropb.contexts.service_handlers import (
     create_transport_response_from_rmq_decode_exception,
     error_dict_from_exception,
 )
@@ -912,7 +912,6 @@ class RMQTransport:
             )
             self._message_callback(message, message_complete_callback, metadata)
 
-
     def send_message(
         self,
         payload: Dict[str, Any],
@@ -1138,6 +1137,10 @@ class RMQTransport:
         elif acknowledgement == "nack":
             response_messages = []
 
+        """ **NOTE** if this call fails, due to a reconnect or a new channel created between the time
+        the message was received and now when the message is acknowledged. the message will be 
+        received again. This is a feature of RabbitMQ and is not a bug.
+        """
         self.acknowledge_service_message(
             channel, delivery_tag, acknowledgement, redelivered
         )

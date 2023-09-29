@@ -18,7 +18,7 @@ IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
 
 def get_claims_from_token(bearer_token: str) -> Dict[str, Any] | None:
-    """This is a stub for the authorise_func that is used in the tests"""
+    """This is a stub for the authorize_func that is used in the tests"""
     _ = bearer_token
     return {
         "sub": "test_user",
@@ -94,7 +94,7 @@ class ServiceExample(ServiceStub):
         )
 
     @nuropb_context
-    @publish_to_mesh(authorise_func=get_claims_from_token)
+    @publish_to_mesh(authorize_func=get_claims_from_token)
     def test_requires_user_claims(self, ctx: NuropbContextManager, **kwargs: Any) -> Any:
         assert isinstance(self, ServiceExample)
         assert isinstance(ctx, NuropbContextManager)
@@ -103,7 +103,7 @@ class ServiceExample(ServiceStub):
         return ctx.user_claims
 
     @nuropb_context
-    @publish_to_mesh(authorise_func=get_claims_from_token, requires_encryption=True)
+    @publish_to_mesh(authorize_func=get_claims_from_token, requires_encryption=True)
     def test_requires_encryption(self, ctx: NuropbContextManager, **kwargs: Any) -> Any:
         assert isinstance(self, ServiceExample)
         assert isinstance(ctx, NuropbContextManager)

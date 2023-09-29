@@ -20,7 +20,7 @@ from nuropb.interface import (
     NuropbException,
 )
 from nuropb.rmq_transport import RMQTransport
-from nuropb.service_handlers import execute_request, handle_execution_result
+from nuropb.contexts.service_handlers import execute_request, handle_execution_result
 
 logger = logging.getLogger(__name__)
 verbose = False
@@ -260,7 +260,7 @@ class RMQAPI(NuropbInterface):
                 description=error_description,
                 payload=service_message["nuropb_payload"],
             )
-            handle_execution_result(service_message, response, MessageCompleteFunction)
+            handle_execution_result(service_message, response, message_complete_callback)
             return
 
         if service_message["nuropb_type"] in ("request", "command", "event"):

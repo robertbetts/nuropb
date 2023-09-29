@@ -4,6 +4,7 @@
 * ~~Token Based Authorization~~
 * ~~End-to-end Encryption~~
 * ~~Self Describing Services~~
+* Post transport ack, implementation configured commit and rollback
 * Service Discovery - Service Mesh Registry
 * Aspects of these features are available through the extensive logging and metrics from RabbitMQ
   * Service Instance Health Checks

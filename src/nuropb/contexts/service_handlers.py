@@ -3,9 +3,8 @@
 Attempt is made to make the code agnostic to the underlying transport.
 
 ROADMAP Features and Considerations (in no particular order):
-- check if the method is deprecated
 - method parameter validation
-- post ack commit or rollback
+- post ack commit or rollback configured by the implementation
 
 """
 import asyncio
@@ -334,7 +333,7 @@ def execute_request(
     service_message: TransportServicePayload,
     message_complete_callback: MessageCompleteFunction,
 ) -> None:
-    """Executes a transport request and calls the message_complete_callback with the result
+    """Executes a transport request and call the message_complete_callback with the result
 
     PLEASE NOTE: At first glance awaitable nature of the result_future is not obvious from the code. read the
     comments in transformed_async_future() to understand how the result_future is handled before making any changes.

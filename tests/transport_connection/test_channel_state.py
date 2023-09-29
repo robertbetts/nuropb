@@ -13,17 +13,17 @@ async def test_closed_channel_message_in_flight(mesh_service, mesh_client):
     the transport's rmq channel is closed and re-opened.
     expected result: This should result in a rmq channel violation, and the channel will be closed. An error
     will be logged in the service. As the message is not acked, when the services queue is re-opened, all
-    un-acked and new messages will start coming in. The orginal inflight request, will processed as new and
-    the response returned to the client which made the response.
+    un-acked and new messages will start coming in. The original in-flight request, will be processed as new
+    and the response returned to the client which made the response.
 
     FYI: Implementation considerations. If during the original processing material change was made to the
     service which would not be rolled back when the original request's ack is attempted. There could be
     situation where the services integrity may be compromised by processing the request again. This is
     not a problem for the NuroPb pattern so solve, however it is right to highlight this.
 
-    #TODO: There is opportunity to provide facilitation for example, adding an implementation configurable
-        feature, that will complete a commit ro rollback step after successful message  acknowledgment at
-        the transport layer.
+    **NOTES**: There is opportunity to provide facilitation for example, adding an implementation
+        configurable feature, that will complete a commit ro rollback step after successful message
+        acknowledgment at the transport layer.
 
     """
     await mesh_service.connect()
@@ -34,7 +34,7 @@ async def test_closed_channel_message_in_flight(mesh_service, mesh_client):
         await asyncio.sleep(1)
         mesh_service.transport._connection.close()
         # nudge the event_loop
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.001)
 
     asyncio.create_task(close_channel())
     asyncio.sleep(0.001)
@@ -43,9 +43,11 @@ async def test_closed_channel_message_in_flight(mesh_service, mesh_client):
         mesh_service.service_name,
         "do_async_task",
         params={
-            "sleep": 2,
+            "sleep": 1.5,
         },
         context={},
     )
+
+    assert result is not None
 
 

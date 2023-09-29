@@ -9,7 +9,7 @@ from nuropb.interface import (
     NUROPB_PROTOCOL_VERSION,
     TransportServicePayload,
 )
-from nuropb.service_handlers import execute_request
+from nuropb.contexts.service_handlers import execute_request
 
 logger = logging.getLogger()
 

@@ -7,7 +7,7 @@ from cryptography.hazmat.primitives import serialization
 
 logger = logging.getLogger(__name__)
 
-AuthoriseFunc = Callable[[str], Optional[Dict[str, Any]]]
+AuthorizeFunc = Callable[[str], Optional[Dict[str, Any]]]
 
 
 def method_visible_on_mesh(method: Callable[..., Any]) -> bool:
@@ -22,7 +22,7 @@ def publish_to_mesh(
     original_method: Optional[Callable[..., Any]] = None,
     *,
     hide_method: Optional[bool] = False,
-    authorise_func: Optional[AuthoriseFunc] = None,
+    authorize_func: Optional[AuthorizeFunc] = None,
     context_token_key: Optional[str] = "Authorization",
     requires_encryption: Optional[bool] = False,
     description: Optional[str] = None,
@@ -35,7 +35,7 @@ def publish_to_mesh(
     hidden by publish_to_mesh will also not be published.
 
     When and authorise_func is specified, this function will be called with the contents of
-    context[context_token_key]. if the token validation is unsuccessful, then a failed authorisation
+    context[context_token_key]. if the token validation is unsuccessful, then a failed authorization
     exception is raised. If successful then ctx.user_claims is populated with claims attached to the
     token.
 
@@ -52,10 +52,10 @@ def publish_to_mesh(
 
 
     :param original_method:
-    :param hide_method:
-    :param authorise_func:
-    :param context_token_key:
-    :param requires_encryption:
+    :param hide_method: bool, (False) if True then the method will not be published to the service mesh
+    :param authorize_func: callable(token: str) -> dict
+    :param context_token_key: str, ("Authorization"), incoming request context key containing the bearer token
+    :param requires_encryption: bool, (False) if True then the service mesh expect and encrypted payload
     :param description: str, if present then override the methods doc string
     :return:
     """
@@ -63,7 +63,7 @@ def publish_to_mesh(
     context_token_key = (
         "Authorization" if context_token_key is None else context_token_key
     )
-    if authorise_func is not None and not callable(authorise_func):
+    if authorize_func is not None and not callable(authorize_func):
         raise TypeError("Authorise function must be callable")
     requires_encryption = False if requires_encryption is None else requires_encryption
 
@@ -74,7 +74,7 @@ def publish_to_mesh(
 
         setattr(wrapper, "__nuropb_mesh_hidden__", hide_method)
         setattr(wrapper, "__nuropb_context_token_key__", context_token_key)
-        setattr(wrapper, "__nuropb_authorise_func__", authorise_func)
+        setattr(wrapper, "__nuropb_authorise_func__", authorize_func)
         setattr(wrapper, "__nuropb_requires_encryption__", requires_encryption)
         if description:
             setattr(wrapper, "__nuropb_description__", description)
@@ -93,9 +93,10 @@ def describe_service(class_instance: object) -> Dict[str, Any] | None:
         "service_name": "",
         "service_version": "",
         "description": "",
-        "encrypted_methods": [],
-        "methods": {},
         "warnings": [],
+        "encrypted_methods": [],
+        "public_key": None,
+        "methods": {},
     }
 
     if class_instance is None:

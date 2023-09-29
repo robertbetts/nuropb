@@ -35,13 +35,13 @@ def nuropb_context(
     both decorators are used.
 
         @nuropb_context
-        @publish_to_mesh(context_token_key="Authorization", authorise_func=authorise_token)
+        @publish_to_mesh(context_token_key="Authorization", authorize_func=authorise_token)
         def hello_requires_auth(...)
 
 
     :param original_method: the method to be decorated
-    :param context_parameter: str
-    :param suppress_exceptions: bool
+    :param context_parameter: str, (ctx) alternative context argument name
+    :param suppress_exceptions: bool, (True), if False then exceptions will be raised during `with ctx:`
     :return: a decorated method
     """
     context_parameter = context_parameter or "ctx"
