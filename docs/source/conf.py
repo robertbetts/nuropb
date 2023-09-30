@@ -6,7 +6,6 @@
 import os
 import sys
 import datetime
-from pathlib import Path
 
 # -- Path setup --------------------------------------------------------------
 
@@ -33,10 +32,10 @@ extensions = [
     "myst_parser",
     "autodoc2",
     "sphinx_rtd_theme",
-    # "sphinx.ext.todo",
     "sphinx.ext.viewcode",
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
+    # "sphinx.ext.todo",
     # "sphinxext.opengraph",
     # "sphinxcontrib.spelling",
     # "sphinx_copybutton",
@@ -46,7 +45,6 @@ extensions = [
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
-
 
 ogp_site_url = "https://nuropb.readthedocs.io/en/latest/"
 
@@ -70,7 +68,6 @@ source_suffix = {
     '.rst': 'restructuredtext',
     '.md': 'markdown',
 }
-
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output

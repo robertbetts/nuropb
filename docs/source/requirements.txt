@@ -8,8 +8,9 @@ alabaster==0.7.13
     # via sphinx
 anyascii==0.3.2
     # via sphinx-autoapi
-astroid==3.0.0
+astroid==2.15.8
     # via
+    #   -r requirements.in
     #   sphinx-autoapi
     #   sphinx-autodoc2
 attrs==23.1.0
@@ -71,6 +72,8 @@ jupyterlab-pygments==0.2.2
     # via nbconvert
 kiwisolver==1.4.5
     # via matplotlib
+lazy-object-proxy==1.9.0
+    # via astroid
 livereload==2.6.3
     # via sphinx-autobuild
 markdown-it-py==3.0.0
@@ -223,3 +226,5 @@ webencodings==0.5.1
     # via
     #   bleach
     #   tinycss2
+wrapt==1.15.0
+    # via astroid

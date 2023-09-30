@@ -7,6 +7,7 @@ readme = "README.md"
 license = "Apache-2.0"
 homepage = "https://github.com/robertbetts/nuropb"
 repository = "https://github.com/robertbetts/nuropb"
+documentation = "https://nuropb.readthedocs.io/en/latest/"
 keywords = ["python", "asynchrous", "api", "event", "rpc", "distributed", "edd", "ddd", "sevice-mesh"]
 classifiers = [
     "License :: OSI Approved :: Apache Software License",
