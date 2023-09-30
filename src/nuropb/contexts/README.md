@@ -1,4 +1,4 @@
-# Service Mesh Context Management
+# Discovery and Context Management
 
 ## NuroPb Context Manager and Decorator
 When a service instance method is decorated with @nuropb_context, a NuropbContextManager instance will

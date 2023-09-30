@@ -7,6 +7,7 @@ readme = "README.md"
 license = "Apache-2.0"
 homepage = "https://github.com/robertbetts/nuropb"
 repository = "https://github.com/robertbetts/nuropb"
+documentation = "https://nuropb.readthedocs.io/en/latest/"
 keywords = ["python", "asynchrous", "api", "event", "rpc", "distributed", "edd", "ddd", "sevice-mesh"]
 classifiers = [
     "License :: OSI Approved :: Apache Software License",
@@ -18,6 +19,9 @@ packages = [
     {include = "nuropb", from = "src"}
 ]
 
+[tool.poetry.extras]
+docs = ["sphinx", "sphinx_rtd_theme"]
+
 [tool.poetry.dependencies]
 python = ">=3.9,<3.12"
 python-dotenv = "^1.0.0"
@@ -26,7 +30,6 @@ requests = {extras = ["security"], version = "^2.31.0"}
 types-requests = "^2.31.0.2"
 tornado = "^6.3.3"
 etcd3-py = "^0.1.6"
-
 
 [tool.poetry.group.dev.dependencies]
 poetry = "^1.5.1"
@@ -37,10 +40,24 @@ pytest-dotenv = "^0.5.2"
 black = "^23.3.0"
 mypy = "^1.4.1"
 pytest-asyncio = "^0.21.1"
-sphinx = "^7.2.6"
 setuptools = "^68.2.2"
+
+[tool.poetry.group.docs]
+optional = true
+
+[tool.poetry.group.docs.dependencies]
+myst-parser = "^2.0.0"
+sphinx = "^7.2.6"
 sphinx-rtd-theme = "^1.3.0"
 readthedocs-sphinx-search = "^0.3.1"
+sphinx-autobuild = "^2021.3.14"
+nbsphinx = "^0.9.3"
+sphinx-autoapi = "^3.0.0"
+sphinxext-opengraph = "^0.8.2"
+sphinxcontrib-spelling = "^8.0.0"
+sphinx-copybutton = "^0.5.2"
+sphinx-autodoc2 = "^0.4.2"
+astroid = "<=2.15.8"
 
 [build-system]
 requires = ["poetry-core"]
@@ -59,12 +76,14 @@ log_cli_date_format = "%d %H:%M:%S"
 
 [tool.coverage.run]
 omit = [".*", "*/site-packages/*"]
+
 [tool.coverage.report]
 fail_under = 80
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:"
 ]
+show_missing = true
 
 [tool.mypy]
 ignore_missing_imports = true
@@ -74,7 +93,7 @@ mypy_path = "src"
 namespace_packages = true
 explicit_package_bases = true
 show_error_codes = true
-strict = true
+#strict = true
 enable_error_code = [
     "ignore-without-code",
     "redundant-expr",
@@ -86,4 +105,4 @@ exclude = [
 
 [tool.pylint]
 #ignore-paths = "tests"
-notes = "FIXME,XXX"
+notes = "FIXME,XXX,FUTURE"

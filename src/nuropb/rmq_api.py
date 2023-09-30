@@ -27,7 +27,7 @@ verbose = False
 
 
 class RMQAPI(NuropbInterface):
-    """RMQAPI: A NuropbInterface implementation that uses RabbitMQ as the underlying transport.
+    """The primary nuropb API.
 
     When an existing transport initialised and connected, and a subsequent transport
     instance is connected with the same service_name and instance_id as the first, the broker
@@ -321,8 +321,7 @@ class RMQAPI(NuropbInterface):
         rpc_response: bool = True,
         encrypted: bool = False,
     ) -> Union[ResponsePayloadDict, Any]:
-        """Makes a rpc request for a method on a service mesh service and waits until the response is
-        received.
+        """Makes a rpc request for a method on a service mesh service and waits until the response is received.
 
         :param service: str, The routing key on the rpc exchange to direct the request to the desired
             service request queue.

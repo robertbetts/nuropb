@@ -1,14 +1,13 @@
-# NuroPb Protocol Encodings
-This directory contains the encoding definitions for the NuroPb protocol.
+# Serialization and Encryption
 
 Out of the box NuroPb transmits JSON encoded messages payloads over the AMQP protocol. There are plans to
 support other encodings such as Protocol Buffers and  m a y b e Avro.
 
 ## JSON
-The JSON encoding is the default encoding for NuroPb. It is the most human-readable encoding and is the
-easiest to debug. It is also the most verbose encoding and is not the most efficient encoding. Take a look
-src/nuropb/interface.py for information on the structure of messages as this translates directly to the
-JSON encoding.
+The JSON encoding is the default encoding for NuroPb. It a handy human-readable encoding and is the
+easiest to debug. It is also a verbose encoding and is not the most efficient. Take a look
+[nuropb/interface.py](#nuropb.interface) for information on the structure of messages as this translates 
+directly to the JSON encoding.
 
 ## Encrypted Payloads
 This is the first extension to the NuroPb payload serialisation ahead of the introduction of Protocol Buffers
