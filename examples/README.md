@@ -62,8 +62,9 @@ poetry install
 ## Running an Example
 
 The next step is to initialize the nuropb service mesh configuration in RabbitMQ. This can be performed by 
-running the [scripted_mesh_setup.py](#myst_parser.sphinx_ext.main.setup_sphinx) and is required to be run before trying `server_basic.py`. With the example
-`server.py`, the setup of the service mesh configuration is done automatically.
+running the [scripted_mesh_setup.py](#examples.scripted_mesh_setup) and is required to be run before trying 
+[server_basic.py](#examples.server_basic). With the example
+[server.py](#examples.server), the setup of the service mesh configuration is done automatically.
 
 ```bash
 # Check that the RabbitMQ container is running and in the code , that the variables `amqp_url` and `rmq_api_url`
@@ -73,15 +74,15 @@ running the [scripted_mesh_setup.py](#myst_parser.sphinx_ext.main.setup_sphinx) 
 poetry run python examples/scripted_mesh_setup.py
 ```
 
-The `examples/server_basic.py` example is for reference mainly, there are no requests from 
-`examples/client.py`. Add them at your pleasure.
+The [server_basic.py](#examples.server_basic) example is for reference mainly, there are no requests from
+[client.py](#examples.client). Add them at your pleasure.
 
 Finally, run the client example.
 ```bash
 poetry run python examples/client.py
 ```
 
-**`all_in_one.py`** is a single file example of a client and server running in the same python file. It also 
+**[all_in_one.py](#examples.all_in_one)`** is a single file example of a client and server running in the same python file. It also 
 demonstrates the use of the `nuropb_context` and `publish_to_mesh` context manager decorators
 
 And there you are. Let us know what you think! All feedback is welcome.

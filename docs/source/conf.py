@@ -14,15 +14,13 @@ from pathlib import Path
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
-# sys.path.insert(0, os.path.abspath("../src"))
-
+sys.path.insert(0, os.path.abspath("../../examples"))
+sys.path.insert(0, os.path.abspath("../../src"))
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-
 year = datetime.datetime.now().year
-
 project = 'nuropb'
 author = 'Robert Betts'
 copyright = f'{year}, {author}'
@@ -55,12 +53,18 @@ ogp_site_url = "https://nuropb.readthedocs.io/en/latest/"
 spelling_warning = True
 spelling_show_suggestions = True
 
+myst_enable_extensions = ["fieldlist"]
 autodoc2_packages = [
     {
-        "path": "../../nuropb",
+        "path": "../../examples/",
+        "auto_mode": True,
+    },
+    {
+        "path": "../../src/nuropb",
         "auto_mode": True,
     },
 ]
+autodoc2_render_plugin = "myst"
 
 source_suffix = {
     '.rst': 'restructuredtext',

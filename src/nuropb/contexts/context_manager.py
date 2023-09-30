@@ -79,15 +79,13 @@ class NuropbContextManager:
         }
 
     def add_event(self, event: Dict[str, Any]) -> None:
-        """Add an event to the context manager. The event will be sent to the service mesh when
-        the context manager exits successfully.
+        """ Add an event to the context manager. The event will be sent to the service mesh when the context manager
+        exits successfully.
 
-        Event format:
-        {
-            "topic": "test_topic",
-            "event": "test_event_payload",
-            "context": {}
-        }
+        Event format
+         - "topic": "test_topic",
+         - "event": "test_event_payload",
+         - "context": {}
 
         :param event:
         :return:

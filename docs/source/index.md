@@ -6,8 +6,22 @@
 :hidden:
 :maxdepth: 2
 
-installation.md
-examples.md
-apidocs/index
+quickstart.md
 ```
- 
+
+```{toctree}
+:hidden:
+:caption: Guides
+
+examples.md
+contexts.md
+encryption.md
+```
+
+```{toctree}
+:hidden:
+:caption: Reference
+
+background.md
+apidocs/index.rst
+```
