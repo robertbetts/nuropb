@@ -1,76 +1,76 @@
-# Examples using nuroPb as the plumbing for a service mesh, async RPC, etc.
+# Examples
 
-This code here is as example and to demonstrate the concepts of the nuroPb service mesh library. Its
-is also use by the development team for integration testing to validate of some in flight design and 
+The [example code](https://github.com/robertbetts/nuropb/tree/main/examples) and setup instructions are 
+intended to help get going quickly and to demonstrate concepts applied by NuroPb. These examples are 
+also used by the project's developers with integration testing and to validate designs and general 
 improvements.
 
-Concepts demonstrated in this example are:
-* Using the nuropb module to connect and make rpc calls to a service on the mesh
-* Setting up the most basic of service mesh services
-* Contexts and context propagation
-* Authorisation
-* Encryption of request-response payloads
-* Using etcd to for service leader election and coordinated configuration for a new service mesh for example
-  when spinning up a new cluster of services that not every service instance is attempting to concurrently 
-  configure RabbitMQ, or other service infrastructure configurations.
-* etcd is disabled by default in the `examples/server.py` example, but can be enabled by setting the 
-  `enable_etcd_usage` variable to `True`
-* Various Python asyncio concepts and examples
+## Demonstrated Concepts
+* Connecting a service and connect to services for making rpc / request-response calls
+* A very basic service with nuropb
+* more complexity such as:
+  * Contexts and context propagation
+  * Authorisation
+  * Point-to-point encryption
 
 ## Prerequisites
-
-Notes:
-* Tested and developed on macOS, Windows 10 and various Linux distros
-* Standalone or Docker and Kubernetes friendly
-* Only infrastructure for RabbitMQ, no database or other required
-  * Caveat: Optionally, etcd is used for leader election and service mesh configuration
-
-Package dependencies:
+```{note}
+* Has been tested and developed on macOS, Windows 10 and various Linux distros
+* Standalone, VSI, Docker or Kubernetes friendly
+* RabbitMQ only, no other database or infrustructure required
+``` 
 * Python >= 3.10
   * Development and testing on 3.11
-* etcd >= 3.4.0
-  * Optional and used for leader election and service mesh configuration
 * RabbitMQ >= 3.8.0 + Management Plugin
-  * Likely work on earlier versions, but not tested
+  * Likely work on earlier versions, not tested
 * Python packages:
-  * Tornado >= 6.3.0 (likely to work of earlier versions of 6.x but not tested)
+  * Tornado >= 6.3.0 (likely to work of earlier versions of 6.x, not tested)
   * Pika >= 1.2.0
 
-## Running this example
+## Environment Setup
+Install [RabbitMQ](https://www.rabbitmq.com/) in any fashion you like, it's quick and easy using
+[Docker](https://www.docker.com/). 
 
-Install RabbitMQ in any fashion you like, but the easiest is to use Docker:
-
+Assuming you are able to run a docker container, here is an example of running RabbitMQ.
 ```bash
-# Update as needed, Docker external ip address, used for connecting to RabbitMQ or etc containers
+# Update as needed, the docker ip address which in many cases is `localhost`. This will 
+# also be the RabbitMQ host address used by the examples.
 export DOCKER_HOST_NAME=localhost
 
-# RabbitMQ with management plugin
+# run the RabbitMQ docker image with management plugin, exposing the amqp and management 
+# ports
 docker run -d --name nuropb-rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management
-
-# OPTIONAL: etcd for leader election and service mesh configuration
-docker run -d --name nuropb-etcd \
-    -p 2379:2379 \
-    -p 2380:2380 \
-    --env ALLOW_NONE_AUTHENTICATION=yes \
-    --env ETCD_ADVERTISE_CLIENT_URLS=http://${DOCKER_HOST_NAME}:2379 \
-    bitnami/etcd:latest
 ```
-
-Clone the repo and install the dependencies:
-* note: install poetry if you don't have it already `pip install poetry`  
+You can either install nuropb from PYPI, copy the examples from github and run them locally or clone the repo and
+setup the repo:
+```bash
+pip install nuropb
+# alternatively, if using poetry
+poetry add nuropb
+```
+For cloning the repo and running the examples locally, follow these steps:
+```{note}
+This is where in addition to having Python >= 3.10, you will also require the `poetry` 
+package manager insatlled. `pip install poetry`
+```
 ```bash
 git clone https://github.com/robertbetts/nuropb.git
 cd nuropb
 poetry install
 ```
 
-next step, before running the example code is to initialize the service mesh configuration in rabbitmq.
-This can be performed either by running the `scripted_mesh_setup.py` or `server.py` examples.
-*NOTE* `server_basic.py` does not set up the service mesh configuration.
+## Running an Example
+
+The next step is to initialize the nuropb service mesh configuration in RabbitMQ. This can be performed by 
+running the [scripted_mesh_setup.py](#myst_parser.sphinx_ext.main.setup_sphinx) and is required to be run before trying `server_basic.py`. With the example
+`server.py`, the setup of the service mesh configuration is done automatically.
+
 ```bash
+# Check that the RabbitMQ container is running and in the code , that the variables `amqp_url` and `rmq_api_url`
+# are correct. The default values are `amqp://guest:guest@localhost:5672/nuropb-example` and 
+# `http://guest:guest@localhost:15672/api/` respectively.
+ 
 poetry run python examples/scripted_mesh_setup.py
-# or
-poetry run python examples/server.py
 ```
 
 The `examples/server_basic.py` example is for reference mainly, there are no requests from 

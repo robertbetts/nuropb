@@ -33,26 +33,34 @@ release = '0.1.6'
 
 extensions = [
     "myst_parser",
-    "sphinx.ext.todo",
+    "autodoc2",
+    "sphinx_rtd_theme",
+    # "sphinx.ext.todo",
     "sphinx.ext.viewcode",
     "sphinx.ext.autodoc",
-    "sphinx_rtd_theme",
     "sphinx.ext.autosummary",
-    # "sphinx.ext.opengraph",
+    # "sphinxext.opengraph",
     # "sphinxcontrib.spelling",
     # "sphinx_copybutton",
-    "autoapi.extension",
-    "nbsphinx",
+    # "autoapi.extension",
+    # "nbsphinx",
 ]
-spelling_warning = True
-spelling_show_suggestions = True
-
-autoapi_type = "python"
-autoapi_dirs = ["../src", '../examples']
-
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
+
+
+ogp_site_url = "https://nuropb.readthedocs.io/en/latest/"
+
+spelling_warning = True
+spelling_show_suggestions = True
+
+autodoc2_packages = [
+    {
+        "path": "../../nuropb",
+        "auto_mode": True,
+    },
+]
 
 source_suffix = {
     '.rst': 'restructuredtext',
