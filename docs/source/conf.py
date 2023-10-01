@@ -23,7 +23,7 @@ year = datetime.datetime.now().year
 project = 'nuropb'
 author = 'Robert Betts'
 copyright = f'{year}, {author}'
-release = '0.1.6'
+release = '0.1.7'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
