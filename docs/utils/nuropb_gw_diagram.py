@@ -11,15 +11,9 @@ with (Diagram(direction="LR")):
 
     with Cluster("Application or Domain Service", direction="LR"):
 
-        with Cluster("Micro-Service A"):
-            service_a = [EC2("Worker"), EC2("Worker")]
-
-        with Cluster("Micro-Service B"):
-            service_b = [EC2("Worker"), EC2("Worker")]
-
-        with Cluster("Service C"):
-            service_c = [EC2("Worker")]
-
+        service_a = EC2("Service A")
+        service_b = EC2("Service B")
+        service_c = EC2("Service C")
         broker = RabbitMQ("NuroPb Broker")
         gw = ELB("NuroPb Gateway")
         service_a >> broker << service_b
@@ -31,6 +25,3 @@ with (Diagram(direction="LR")):
     with Cluster("Direct Broker Consumers", direction="TB"):
         broker << Python("NuroPb Consumer")
 
-    with Cluster("Larger Mesh or Integrations", direction="TB"):
-        enterprise_mesh = ELB("Enterprise Mesh")
-        gw >> Edge(color="darkgreen") << enterprise_mesh
