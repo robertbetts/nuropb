@@ -21,8 +21,7 @@ If you have code that you want to easily scale, communicate with other services 
 
 **If any of these are of interest to you, NuroPb is worth considering.**
 
-
-
+<img src="docs/source/nuropb_diagram.png" alt="Diagram of an example NuroPb enabled Application or Domain Service" width="400px">
 
 NuroPb is available under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.html), 
 this web site including all documentation is licensed under [Creative

@@ -1,8 +1,7 @@
 # Quickstart
 
-The best way to get started is to look at the examples and the `examples/README.md` file.
-
-These quick fire steps are the minimum to get going.:
+The best way to get started is to look through the [examples](#examples). These quick fire steps are the 
+minimum to get going.:
 * Install Python >= 3.10
 * An accessible RabbitMQ >= 3.8.0 + Management Plugin
 * Install the nuropb package, `pip install nuropb`
