@@ -40,7 +40,7 @@ async def test_setting_connection_properties(rmq_settings, test_settings):
         "host": "localhost",
         "username": "guest",
         "password": "guest",
-        "port": rmq_settings["port"],
+        "port": rmq_settings.get("port"),
         "vhost": rmq_settings["vhost"],
         "verify": False,
     }
@@ -96,7 +96,7 @@ async def test_single_instance_connection(rmq_settings, test_settings):
         "host": "localhost",
         "username": "guest",
         "password": "guest",
-        "port": rmq_settings["port"],
+        "port": rmq_settings.get("port"),
         "vhost": rmq_settings["vhost"],
     }
     transport_settings = dict(
@@ -151,7 +151,7 @@ async def test_bad_credentials(rmq_settings, test_settings):
         "host": rmq_settings["host"],
         "username": rmq_settings["username"],
         "password": "bad_guest",
-        "port": rmq_settings["port"],
+        "port": rmq_settings.get("port"),
         "vhost": rmq_settings["vhost"],
     }
     transport_settings = dict(
@@ -187,7 +187,7 @@ async def test_bad_vhost(rmq_settings, test_settings):
         "host": rmq_settings["host"],
         "username": rmq_settings["username"],
         "password": rmq_settings["password"],
-        "port": rmq_settings["port"],
+        "port": rmq_settings.get("port"),
         "vhost": "bad_vhost",
     }
     transport_settings = dict(
