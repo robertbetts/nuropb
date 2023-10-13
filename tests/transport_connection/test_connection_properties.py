@@ -5,10 +5,28 @@ import asyncio
 import pytest
 
 from nuropb.rmq_api import RMQAPI
+from nuropb.rmq_lib import rmq_api_url_from_amqp_url
 from nuropb.rmq_transport import RMQTransport
 from nuropb.testing.stubs import ServiceStub
 
 logger = logging.getLogger(__name__)
+
+
+def test_ampq_url_to_api_url():
+    api_url = rmq_api_url_from_amqp_url("amqp://guest:guest@localhost:5672/nuropb-example")
+    assert api_url == "http://guest:guest@localhost:15672/api"
+
+    api_url = rmq_api_url_from_amqp_url("amqp://guest@localhost:5672/nuropb-example")
+    assert api_url == "http://guest@localhost:15672/api"
+
+    api_url = rmq_api_url_from_amqp_url("amqp:///nuropb-example")
+    assert api_url == "http://localhost:15672/api"
+
+    api_url = rmq_api_url_from_amqp_url("amqps://guest:guest@localhost:5672/nuropb-example")
+    assert api_url == "https://guest:guest@localhost:15672/api"
+
+    api_url = rmq_api_url_from_amqp_url("amqps://guest:guest@localhost/nuropb-example")
+    assert api_url == "https://guest:guest@localhost:15671/api"
 
 
 @pytest.mark.asyncio
