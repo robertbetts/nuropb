@@ -37,7 +37,7 @@ async def test_closed_channel_message_in_flight(mesh_service, mesh_client):
         await asyncio.sleep(0.001)
 
     asyncio.create_task(close_channel())
-    asyncio.sleep(0.001)
+    await asyncio.sleep(0.001)
 
     result = await mesh_client.request(
         mesh_service.service_name,
