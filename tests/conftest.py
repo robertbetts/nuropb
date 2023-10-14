@@ -47,6 +47,7 @@ def test_settings():
     amqp_port = os.environ.get("RMQ_AMQP_PORT", 5672)
 
     yield {
+        "scheme": "amqp",
         "api_scheme": "http",
         "api_port": api_port,
         "port": amqp_port,
@@ -138,6 +139,7 @@ def test_rmq_url_static(test_settings):
         username=test_settings["username"],
         password=test_settings["password"],
         vhost=vhost,
+        scheme=test_settings["scheme"],
     )
     api_url = build_rmq_api_url(
         scheme=test_settings["api_scheme"],

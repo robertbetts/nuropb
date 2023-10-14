@@ -17,15 +17,12 @@ async def test_tls_connect(rmq_settings, test_settings):
 
     def message_callback(message):
         print(message)
-
-    amqp_url = {
+    amqp_url = rmq_settings.copy()
+    amqp_url.update({
         "ssl": True,
-        "host": "localhost",
-        "username": "guest",
-        "password": "guest",
-        "vhost": rmq_settings["vhost"],
+        "port": 5671,
         "verify": False,
-    }
+    })
     transport_settings = dict(
         dl_exchange=test_settings["dl_exchange"],
         rpc_bindings=test_settings["rpc_bindings"],
@@ -66,6 +63,7 @@ async def test_tls_connect(rmq_settings, test_settings):
     await api.disconnect()
     assert api.connected is False
 
+
 @pytest.mark.asyncio
 async def test_tls_connect_with_cafile(rmq_settings, test_settings):
 
@@ -76,17 +74,14 @@ async def test_tls_connect_with_cafile(rmq_settings, test_settings):
     certfile = os.path.join(os.path.dirname(__file__), "cert-2.pem")
     keyfile = os.path.join(os.path.dirname(__file__), "key-2.pem")
 
-    amqp_url = {
+    amqp_url = rmq_settings.copy()
+    amqp_url.update({
         "cafile": cacertfile,
-        "host": "localhost",
-        "username": "guest",
-        "password": "guest",
         "port": 5671,
-        "vhost": rmq_settings["vhost"],
         "verify": False,
         "certfile": certfile,
         "keyfile": keyfile,
-    }
+    })
     transport_settings = dict(
         dl_exchange=test_settings["dl_exchange"],
         rpc_bindings=test_settings["rpc_bindings"],

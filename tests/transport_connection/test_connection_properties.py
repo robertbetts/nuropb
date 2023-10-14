@@ -36,14 +36,7 @@ async def test_setting_connection_properties(rmq_settings, test_settings):
     constructor. The connection properties are used to set the properties of the AMQP connection
     that is established by the client.
     """
-    amqp_url = {
-        "host": "localhost",
-        "username": "guest",
-        "password": "guest",
-        "port": rmq_settings.get("port"),
-        "vhost": rmq_settings["vhost"],
-        "verify": False,
-    }
+    amqp_url = rmq_settings.copy()
     transport_settings = dict(
         dl_exchange=test_settings["dl_exchange"],
         rpc_bindings=test_settings["rpc_bindings"],
@@ -92,13 +85,7 @@ async def test_setting_connection_properties(rmq_settings, test_settings):
 async def test_single_instance_connection(rmq_settings, test_settings):
     """Test Single instance connections
     """
-    amqp_url = {
-        "host": "localhost",
-        "username": "guest",
-        "password": "guest",
-        "port": rmq_settings.get("port"),
-        "vhost": rmq_settings["vhost"],
-    }
+    amqp_url = rmq_settings.copy()
     transport_settings = dict(
         dl_exchange=test_settings["dl_exchange"],
         rpc_bindings=test_settings["rpc_bindings"],
@@ -147,13 +134,8 @@ async def test_single_instance_connection(rmq_settings, test_settings):
 @pytest.mark.asyncio
 async def test_bad_credentials(rmq_settings, test_settings):
 
-    amqp_url = {
-        "host": rmq_settings["host"],
-        "username": rmq_settings["username"],
-        "password": "bad_guest",
-        "port": rmq_settings.get("port"),
-        "vhost": rmq_settings["vhost"],
-    }
+    amqp_url = rmq_settings.copy()
+    amqp_url["username"] = "bad-username"
     transport_settings = dict(
         dl_exchange=test_settings["dl_exchange"],
         rpc_bindings=test_settings["rpc_bindings"],
@@ -183,13 +165,8 @@ async def test_bad_credentials(rmq_settings, test_settings):
 @pytest.mark.asyncio
 async def test_bad_vhost(rmq_settings, test_settings):
 
-    amqp_url = {
-        "host": rmq_settings["host"],
-        "username": rmq_settings["username"],
-        "password": rmq_settings["password"],
-        "port": rmq_settings.get("port"),
-        "vhost": "bad_vhost",
-    }
+    amqp_url = rmq_settings.copy()
+    amqp_url["vhost"] = "bad-vhost"
     transport_settings = dict(
         dl_exchange=test_settings["dl_exchange"],
         rpc_bindings=test_settings["rpc_bindings"],
