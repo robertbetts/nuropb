@@ -53,7 +53,7 @@ def test_settings():
         "api_port": api_port,
         "scheme": "amqp",
         "port": amqp_port,
-        "host": "localhost",
+        "host": "127.0.0.1",
         "username": "guest",
         "password": "guest",
         "service_name": "test_service",
