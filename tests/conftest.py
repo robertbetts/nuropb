@@ -45,8 +45,6 @@ def test_settings():
     logger.info(os.environ)
     api_port = os.environ.get("RMQ_API_PORT", "15672")
     amqp_port = os.environ.get("RMQ_AMQP_PORT", "5672")
-    # api_port = "15673"
-    # amqp_port = "5673"
 
     yield {
         "api_scheme": "http",

@@ -28,6 +28,8 @@ async def test_client_and_service_api_quick_setup(test_settings, rmq_settings):
     client_api = create_client(
         connection_properties={
             "vhost": connection_properties["vhost"],
+            "port": rmq_settings["port"],
+            "host": rmq_settings["host"],
         }
     )
     await client_api.connect()
@@ -44,17 +46,20 @@ async def test_client_and_service_api_quick_setup_raw_defaults(rmq_settings):
     configure_mesh(
         connection_properties={
             "port": rmq_settings["port"],
+            "host": rmq_settings["host"],
         }
     )
     service_api = create_service(
         name="test_service",
         connection_properties={
             "port": rmq_settings["port"],
+            "host": rmq_settings["host"],
         }
     )
     await service_api.connect()
     client_api = create_client(connection_properties={
         "port": rmq_settings["port"],
+        "host": rmq_settings["host"],
     })
     await client_api.connect()
 
