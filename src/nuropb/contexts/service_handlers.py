@@ -282,8 +282,8 @@ def handle_execution_result(
             acknowledgement = "reject"
 
     if isinstance(result, BaseException):
-        """ Create NuroPb response from an exception, and update acknowledgement type.
-        NOTE: Some exceptions are special cases and not necessarily errors. For example, 
+        """Create NuroPb response from an exception, and update acknowledgement type.
+        NOTE: Some exceptions are special cases and not necessarily errors. For example,
         NuropbCallAgain and NuropbSuccess are not errors.
         """
         (
@@ -298,15 +298,14 @@ def handle_execution_result(
             logger.exception(result)
 
     if service_message["nuropb_type"] in ("event", "command"):
-        """There is no requirement to handle the response of instance._event_handler result, only to 
-        positively acknowledge the event. There is also no requirements to handle the response of 
+        """There is no requirement to handle the response of instance._event_handler result, only to
+        positively acknowledge the event. There is also no requirements to handle the response of
         a command, only to positively acknowledge the command.
         """
         pass  # Do nothing
 
     if service_message["nuropb_type"] == "request":
-        """Create NuroPb response from the service call result
-        """
+        """Create NuroPb response from the service call result"""
         if isinstance(error, BaseException):
             pyload_error = error_dict_from_exception(error)
             if verbose:
@@ -366,11 +365,9 @@ def execute_request(
 
     result = None
     try:
-
         payload = service_message["nuropb_payload"]
 
         if service_message["nuropb_type"] == "event":
-
             payload = service_message["nuropb_payload"]
             topic = payload["topic"]
             event = payload["event"]
@@ -405,7 +402,9 @@ def execute_request(
                 payload=payload,
                 exception=None,
             )
-            handle_execution_result(service_message, exception_result, message_complete_callback)
+            handle_execution_result(
+                service_message, exception_result, message_complete_callback
+            )
             return
 
         try:
@@ -434,16 +433,19 @@ def execute_request(
             else:
                 exception_result = err
 
-            handle_execution_result(service_message, exception_result, message_complete_callback)
+            handle_execution_result(
+                service_message, exception_result, message_complete_callback
+            )
             return
 
         if asyncio.isfuture(result) or asyncio.iscoroutine(result):
-
             if is_future(result):
                 exception_result = ValueError(
                     "Tornado Future detected, please use asyncio.Future instead"
                 )
-                handle_execution_result(service_message, exception_result, message_complete_callback)
+                handle_execution_result(
+                    service_message, exception_result, message_complete_callback
+                )
                 return
 
             def future_done_callback(future: Awaitable[Any]) -> None:

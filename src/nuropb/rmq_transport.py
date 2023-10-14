@@ -8,7 +8,11 @@ import pika
 from pika import connection
 from pika.adapters.asyncio_connection import AsyncioConnection
 from pika.channel import Channel
-from pika.exceptions import ChannelClosedByBroker, ProbableAccessDeniedError, ChannelClosedByClient
+from pika.exceptions import (
+    ChannelClosedByBroker,
+    ProbableAccessDeniedError,
+    ChannelClosedByClient,
+)
 import pika.spec
 from pika.frame import Method
 
@@ -24,11 +28,14 @@ from nuropb.interface import (
     AcknowledgeAction,
     NUROPB_PROTOCOL_VERSION,
     NUROPB_VERSION,
-    NuropbCallAgainReject, RequestPayloadDict, ResponsePayloadDict,
+    NuropbCallAgainReject,
+    RequestPayloadDict,
+    ResponsePayloadDict,
 )
 from nuropb.rmq_lib import (
     create_virtual_host,
-    configure_nuropb_rmq, get_connection_parameters,
+    configure_nuropb_rmq,
+    get_connection_parameters,
 )
 from nuropb.contexts import service_handlers
 from nuropb.contexts.service_handlers import (
@@ -112,11 +119,12 @@ class ServiceNotConfigured(Exception):
     """Raised when a service is not properly configured on the RabbitMQ broker.
     the leader will be expected to configure the Exchange and service queues
     """
+
     pass
 
 
 class RMQTransport:
-    """ RMQTransport is the base class for the RabbitMQ transport. It wraps the
+    """RMQTransport is the base class for the RabbitMQ transport. It wraps the
     NuroPb service mesh patterns and rules over the AMQP protocol.
 
     When RabbitMQ closes the connection, this class will stop and alert that
@@ -127,6 +135,7 @@ class RMQTransport:
 
     TODO: Configure the Pika client connection attributes in the pika client properties.
     """
+
     _service_name: str
     _instance_id: str
     _amqp_url: str | Dict[str, Any]
@@ -239,17 +248,27 @@ class RMQTransport:
         self._instance_id = instance_id
         self._amqp_url = amqp_url
         self._rpc_exchange = kwargs.get("rpc_exchange", None) or "nuropb-rpc-exchange"
-        self._events_exchange = kwargs.get("events_exchange", None) or "nuropb-events-exchange"
+        self._events_exchange = (
+            kwargs.get("events_exchange", None) or "nuropb-events-exchange"
+        )
         self._dl_exchange = kwargs.get("dl_exchange", None) or "nuropb-dl-exchange"
-        self._dl_queue = kwargs.get("dl_queue", None) or f"nuropb-{self._service_name}-dl"
-        self._service_queue = kwargs.get("service_queue", None) or f"nuropb-{self._service_name}-sq"
+        self._dl_queue = (
+            kwargs.get("dl_queue", None) or f"nuropb-{self._service_name}-dl"
+        )
+        self._service_queue = (
+            kwargs.get("service_queue", None) or f"nuropb-{self._service_name}-sq"
+        )
         self._response_queue = (
-                kwargs.get("response_queue", None)
-                or f"nuropb-{self._service_name}-{self._instance_id}-rq"
+            kwargs.get("response_queue", None)
+            or f"nuropb-{self._service_name}-{self._instance_id}-rq"
         )
         self._rpc_bindings = rpc_bindings
         self._event_bindings = event_bindings
-        self._prefetch_count = 1 if kwargs.get("prefetch_count", None) is None else kwargs.get("prefetch_count", 1)
+        self._prefetch_count = (
+            1
+            if kwargs.get("prefetch_count", None) is None
+            else kwargs.get("prefetch_count", 1)
+        )
         self._default_ttl = default_ttl or 60 * 60 * 1000 * 12  # 12 hours
         self._message_callback = message_callback
         self._rpc_bindings.add(self._service_name)
@@ -400,15 +419,18 @@ class RMQTransport:
                 )
                 raise err
         except NuropbTransportError as err:
-            """ Logging already captured, handle the error, likely a channel closed by broker
-            """
+            """Logging already captured, handle the error, likely a channel closed by broker"""
             if not self._connected_future.done():
                 self._connected_future.set_exception(err)
                 if err.close_connection:
                     await self.stop()
 
         except Exception as err:
-            logger.exception("General failure connecting to RabbitMQ. %s: %s", type(err).__name__, err)
+            logger.exception(
+                "General failure connecting to RabbitMQ. %s: %s",
+                type(err).__name__,
+                err,
+            )
             if not self._connected_future.done():
                 self._connected_future.set_exception(err)
 
@@ -510,7 +532,9 @@ class RMQTransport:
 
         self.open_channel()
 
-    def on_connection_open_error(self, conn: AsyncioConnection, reason: Exception) -> None:
+    def on_connection_open_error(
+        self, conn: AsyncioConnection, reason: Exception
+    ) -> None:
         """This method is called by pika if the connection to RabbitMQ can't be established.
 
         :param pika.adapters.asyncio_connection.AsyncioConnection conn:
@@ -522,11 +546,13 @@ class RMQTransport:
                 close_connection = True
             else:
                 close_connection = False
-            self._connected_future.set_exception(NuropbTransportError(
-                description=f"Connection open Error. {type(reason).__name__}: {reason}",
-                exception=reason,
-                close_connection=close_connection,
-            ))
+            self._connected_future.set_exception(
+                NuropbTransportError(
+                    description=f"Connection open Error. {type(reason).__name__}: {reason}",
+                    exception=reason,
+                    close_connection=close_connection,
+                )
+            )
         if self._connecting:
             self._connecting = False
 
@@ -616,7 +642,10 @@ class RMQTransport:
                     " There is already a response queue setup with the same name and instance_id,"
                     " and hence this service is considered single instance only"
                 )
-            elif reason.reply_code == 403 and "Provided JWT token has expired" in reason.reply_text:
+            elif (
+                reason.reply_code == 403
+                and "Provided JWT token has expired" in reason.reply_text
+            ):
                 reason_description = (
                     f"RabbitMQ channel closed by the broker ({reason.reply_code})."
                     f" AuthenticationExpired: {reason.reply_text}"
@@ -629,8 +658,8 @@ class RMQTransport:
 
             logger.critical(reason_description)
             if self._connected_future and not self._connected_future.done():
-                """ the Connection is still in press and when the channel was closed by the broker
-                so treat as a serious error and close the connection 
+                """the Connection is still in press and when the channel was closed by the broker
+                so treat as a serious error and close the connection
                 """
                 self._connected_future.set_exception(
                     NuropbTransportError(
@@ -641,22 +670,19 @@ class RMQTransport:
                 )
 
             elif self._connected_future and self._connected_future.done():
-                """ The channel was close after the connection was established
-                """
+                """The channel was close after the connection was established"""
                 if reason.reply_code in (403, 404):
-                    """ There is no point in auto reconnecting when access is refused, so
+                    """There is no point in auto reconnecting when access is refused, so
                     shut the connection down.
                     """
                     asyncio.create_task(self.stop())
                 else:
-                    """ It's ok to try and re-open the channel
-                    """
+                    """It's ok to try and re-open the channel"""
                     logging.info("Re-opening channel")
                     self.open_channel()
 
         elif not isinstance(reason, ChannelClosedByClient):
-            """ Log the reason for the channel close and allow the re-open process to continue 
-            """
+            """Log the reason for the channel close and allow the re-open process to continue"""
             reason_description = (
                 f"RabbitMQ channel closed ({reason.reply_code})."
                 f"{type(reason).__name__}: {reason}"
@@ -1501,7 +1527,9 @@ encrypted: {encrypted}
         if self._channel is None or self._channel.is_closed:
             return
         else:
-            logger.info("Stopping consumers and sending a Basic.Cancel command to RabbitMQ")
+            logger.info(
+                "Stopping consumers and sending a Basic.Cancel command to RabbitMQ"
+            )
             all_consumers_closed: Awaitable[bool] = asyncio.Future()
 
             def _on_cancel_ok(frame: pika.frame.Method) -> None:
@@ -1516,11 +1544,11 @@ encrypted: {encrypted}
 
             try:
                 logger.info(
-                    "Waiting for %ss for consumers to close", CONSUMER_CLOSED_WAIT_TIMEOUT
+                    "Waiting for %ss for consumers to close",
+                    CONSUMER_CLOSED_WAIT_TIMEOUT,
                 )
                 await asyncio.wait_for(
-                    all_consumers_closed,
-                    timeout=CONSUMER_CLOSED_WAIT_TIMEOUT
+                    all_consumers_closed, timeout=CONSUMER_CLOSED_WAIT_TIMEOUT
                 )
                 logger.info("Consumers to gracefully closed")
             except asyncio.TimeoutError:

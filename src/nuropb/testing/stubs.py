@@ -34,16 +34,17 @@ class ServiceStub:
     _private_key: rsa.RSAPrivateKey
 
     def __init__(
-            self,
-            service_name: str,
-            instance_id: Optional[str] = None,
-            private_key: Optional[rsa.RSAPrivateKey] = None,
+        self,
+        service_name: str,
+        instance_id: Optional[str] = None,
+        private_key: Optional[rsa.RSAPrivateKey] = None,
     ):
         self._service_name = service_name
         self._instance_id = instance_id or uuid4().hex
         self._private_key = private_key or rsa.generate_private_key(
             public_exponent=65537, key_size=2048, backend=default_backend()
         )
+
     @property
     def service_name(self) -> str:
         return self._service_name
@@ -95,7 +96,9 @@ class ServiceExample(ServiceStub):
 
     @nuropb_context
     @publish_to_mesh(authorize_func=get_claims_from_token)
-    def test_requires_user_claims(self, ctx: NuropbContextManager, **kwargs: Any) -> Any:
+    def test_requires_user_claims(
+        self, ctx: NuropbContextManager, **kwargs: Any
+    ) -> Any:
         assert isinstance(self, ServiceExample)
         assert isinstance(ctx, NuropbContextManager)
         self._method_call_count += 1

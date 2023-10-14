@@ -6,13 +6,20 @@ from typing import Optional, Dict, Any, Callable
 from uuid import uuid4
 
 from nuropb.rmq_api import RMQAPI
-from nuropb.rmq_lib import configure_nuropb_rmq, create_virtual_host, build_amqp_url, build_rmq_api_url, \
-    rmq_api_url_from_amqp_url
+from nuropb.rmq_lib import (
+    configure_nuropb_rmq,
+    create_virtual_host,
+    build_amqp_url,
+    build_rmq_api_url,
+    rmq_api_url_from_amqp_url,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def default_connection_properties(connection_properties: Dict[str, Any]) -> Dict[str, Any]:
+def default_connection_properties(
+    connection_properties: Dict[str, Any]
+) -> Dict[str, Any]:
     if "host" not in connection_properties:
         connection_properties["host"] = "localhost"
     if "username" not in connection_properties:
@@ -34,13 +41,13 @@ def default_connection_properties(connection_properties: Dict[str, Any]) -> Dict
 
 
 def create_client(
-        name: Optional[str] = None,
-        instance_id: Optional[str] = None,
-        connection_properties: Optional[Dict[str, Any]] = None,
-        transport_settings: Optional[str | Dict[str, Any]] = None,
-        transport: Optional[RMQAPI] = RMQAPI,
+    name: Optional[str] = None,
+    instance_id: Optional[str] = None,
+    connection_properties: Optional[Dict[str, Any]] = None,
+    transport_settings: Optional[str | Dict[str, Any]] = None,
+    transport: Optional[RMQAPI] = RMQAPI,
 ) -> RMQAPI:
-    """ Create a client api instance for the nuropb service mesh. This caller of this function
+    """Create a client api instance for the nuropb service mesh. This caller of this function
     will have to implement the asyncio call to connect to the service mesh:
         await client_api.connect()
 
@@ -53,11 +60,13 @@ def create_client(
     """
 
     if connection_properties is None:
-        connection_properties = default_connection_properties({
-            "vhost": "nuropb",
-            "ssl": False,
-            "verify": False,
-        })
+        connection_properties = default_connection_properties(
+            {
+                "vhost": "nuropb",
+                "ssl": False,
+                "verify": False,
+            }
+        )
     elif isinstance(connection_properties, dict):
         connection_properties = default_connection_properties(connection_properties)
 
@@ -84,19 +93,21 @@ async def connect(instance_id: Optional[str] = None):
 
 
 def configure_mesh(
-        mesh_name: Optional[str] = None,
-        connection_properties: Optional[Dict[str, Any]] = None,
-        transport_settings: Optional[str | Dict[str, Any]] = None,
+    mesh_name: Optional[str] = None,
+    connection_properties: Optional[Dict[str, Any]] = None,
+    transport_settings: Optional[str | Dict[str, Any]] = None,
 ):
     if mesh_name is None:
         mesh_name = "nuropb"
 
     if connection_properties is None:
-        connection_properties = default_connection_properties({
-            "vhost": mesh_name,
-            "ssl": False,
-            "verify": False,
-        })
+        connection_properties = default_connection_properties(
+            {
+                "vhost": mesh_name,
+                "ssl": False,
+                "verify": False,
+            }
+        )
 
     if isinstance(connection_properties, str):
         amqp_url = connection_properties
@@ -115,9 +126,7 @@ def configure_mesh(
         password = connection_properties["password"]
         vhost = connection_properties["vhost"]
 
-        amqp_url = build_amqp_url(
-            host, port, username, password, vhost, rmq_scheme
-        )
+        amqp_url = build_amqp_url(host, port, username, password, vhost, rmq_scheme)
     else:
         raise ValueError("connection_properties must be a str or dict")
 
@@ -148,21 +157,22 @@ def configure_mesh(
 
 
 class MeshService:
-    """ A generic service class that can be used to create a connection only service instance for the
+    """A generic service class that can be used to create a connection only service instance for the
     nuropb service mesh. This class could also be used as a template or to define a subclass for
     creating a service instance.
     """
+
     _service_name: str
     _instance_id: str
     _event_bindings: list[str]
     _event_callback: Optional[Callable]
 
     def __init__(
-            self,
-            service_name: str,
-            instance_id: Optional[str] = None,
-            event_bindings: Optional[list[str]] = None,
-            event_callback: Optional[Callable] = None,
+        self,
+        service_name: str,
+        instance_id: Optional[str] = None,
+        event_bindings: Optional[list[str]] = None,
+        event_callback: Optional[Callable] = None,
     ):
         self._service_name = service_name
         self._instance_id = instance_id or uuid4().hex
@@ -170,12 +180,12 @@ class MeshService:
         self._event_callback = event_callback
 
     async def _handle_event_(
-            self,
-            topic: str,
-            event: dict,
-            target: list[str] | None = None,
-            context: dict | None = None,
-            trace_id: str | None = None,
+        self,
+        topic: str,
+        event: dict,
+        target: list[str] | None = None,
+        context: dict | None = None,
+        trace_id: str | None = None,
     ):
         _ = self
         if self._event_callback is not None:
@@ -183,16 +193,16 @@ class MeshService:
 
 
 def create_service(
-        name: str,
-        instance_id: Optional[str] = None,
-        service_instance: Optional[object] = None,
-        connection_properties: Optional[Dict[str, Any]] = None,
-        transport_settings: Optional[str | Dict[str, Any]] = None,
-        transport: Optional[RMQAPI] = RMQAPI,
-        event_bindings: Optional[list[str]] = None,
-        event_callback: Optional[Callable] = None,
+    name: str,
+    instance_id: Optional[str] = None,
+    service_instance: Optional[object] = None,
+    connection_properties: Optional[Dict[str, Any]] = None,
+    transport_settings: Optional[str | Dict[str, Any]] = None,
+    transport: Optional[RMQAPI] = RMQAPI,
+    event_bindings: Optional[list[str]] = None,
+    event_callback: Optional[Callable] = None,
 ) -> RMQAPI:
-    """ Create a client api instance for the nuropb service mesh. This caller of this function
+    """Create a client api instance for the nuropb service mesh. This caller of this function
     will have to implement the asyncio call to connect to the service mesh:
         await client_api.connect()
 
@@ -215,11 +225,13 @@ def create_service(
     """
 
     if connection_properties is None:
-        connection_properties = default_connection_properties({
-            "vhost": "nuropb",
-            "ssl": False,
-            "verify": False,
-        })
+        connection_properties = default_connection_properties(
+            {
+                "vhost": "nuropb",
+                "ssl": False,
+                "verify": False,
+            }
+        )
     elif isinstance(connection_properties, dict):
         connection_properties = default_connection_properties(connection_properties)
 

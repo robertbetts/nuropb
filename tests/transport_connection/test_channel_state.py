@@ -30,7 +30,9 @@ async def test_closed_channel_message_in_flight(mesh_service, mesh_client):
     await mesh_client.connect()
 
     async def close_channel():
-        logger.info("closing service's transport channel, by closing the connection after 1 seconds")
+        logger.info(
+            "closing service's transport channel, by closing the connection after 1 seconds"
+        )
         await asyncio.sleep(1)
         mesh_service.transport._connection.close()
         # nudge the event_loop
@@ -49,5 +51,3 @@ async def test_closed_channel_message_in_flight(mesh_service, mesh_client):
     )
 
     assert result is not None
-
-

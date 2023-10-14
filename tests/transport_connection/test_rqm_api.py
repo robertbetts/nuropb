@@ -43,7 +43,6 @@ async def test_instantiate_api(test_settings, rmq_settings):
                 amqp_url=test_url,
             )
 
-
     rmq_api = RMQAPI(
         amqp_url=rmq_settings,
     )

@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 @pytest.mark.asyncio
 async def test_call_self(test_settings, rmq_settings, service_instance):
-    """ Currently this test passes, as there is no check for the service name in the request method.
+    """Currently this test passes, as there is no check for the service name in the request method.
     Restricting the service name to be different from the service name of the service instance is
     under consideration for a future release.
     """
@@ -59,8 +59,10 @@ async def test_call_self(test_settings, rmq_settings, service_instance):
 
 
 @pytest.mark.asyncio
-async def test_subscribe_to_events_from_self(test_settings, rmq_settings, service_instance):
-    """ Currently this test passes, as there is no check to restrict binding to the service queue
+async def test_subscribe_to_events_from_self(
+    test_settings, rmq_settings, service_instance
+):
+    """Currently this test passes, as there is no check to restrict binding to the service queue
     for events that originate from the service.
     This restriction is under consideration for a future release.
     """

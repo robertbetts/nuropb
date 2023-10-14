@@ -118,7 +118,6 @@ class ServiceContainer(ServiceRunner):
         self._etcd_lease = None
         self._etcd_watcher = None
 
-
         if not self._etcd_config:
             logger.info("etcd features are disabled")
             self.running_state = "running-standalone"
@@ -129,14 +128,12 @@ class ServiceContainer(ServiceRunner):
             )
         )
 
-
         # ***NOTE*** MOVED THIS CODE to self.start()
         # if self._etcd_config:
         #     """asyncio NOTE: the etcd3 client is initialized as an asyncio task and will run
         #     once __init__ has completed and there us a running asyncio event loop.
         #     """
         #     task = asyncio.create_task(self.init_etcd(on_startup=True))
-
 
     @property
     def running_state(self) -> ContainerRunningState:

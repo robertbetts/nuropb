@@ -12,13 +12,23 @@ import pika
 from pika.channel import Channel
 from pika.credentials import PlainCredentials
 
-from nuropb.interface import PayloadDict, NuropbTransportError, NUROPB_VERSION, NUROPB_PROTOCOL_VERSION
+from nuropb.interface import (
+    PayloadDict,
+    NuropbTransportError,
+    NUROPB_VERSION,
+    NUROPB_PROTOCOL_VERSION,
+)
 
 logger = logging.getLogger(__name__)
 
 
 def build_amqp_url(
-    host: str, port: str | int, username: str, password: str, vhost: str, scheme: str = "amqp"
+    host: str,
+    port: str | int,
+    username: str,
+    password: str,
+    vhost: str,
+    scheme: str = "amqp",
 ) -> str:
     """Creates an AMQP URL for connecting to RabbitMQ"""
     if username:
@@ -69,9 +79,9 @@ def rmq_api_url_from_amqp_url(
 
 
 def get_client_connection_properties(
-        name: Optional[str] = None,
-        instance_id: Optional[str] = None,
-        client_only: Optional[bool] = None,
+    name: Optional[str] = None,
+    instance_id: Optional[str] = None,
+    client_only: Optional[bool] = None,
 ) -> Dict[str, str]:
     """Returns the client connection properties for the transport"""
     try:
@@ -98,11 +108,11 @@ def get_client_connection_properties(
 
 
 def get_connection_parameters(
-        amqp_url: str | Dict[str, Any],
-        name: Optional[str] = None,
-        instance_id: Optional[str] = None,
-        client_only: Optional[bool] = None,
-        **overrides: Any
+    amqp_url: str | Dict[str, Any],
+    name: Optional[str] = None,
+    instance_id: Optional[str] = None,
+    client_only: Optional[bool] = None,
+    **overrides: Any,
 ) -> pika.ConnectionParameters | pika.URLParameters:
     """Return the connection parameters for the transport
     :param amqp_url: the AMQP URL or connection parameters to use
@@ -147,8 +157,7 @@ def get_connection_parameters(
             # For client x509 certificate authentication
             if amqp_url.get("certfile"):
                 context.load_cert_chain(
-                    certfile=amqp_url.get("certfile"),
-                    keyfile=amqp_url.get("keyfile")
+                    certfile=amqp_url.get("certfile"), keyfile=amqp_url.get("keyfile")
                 )
 
             # Whether to disable SSL certificate verification
@@ -159,17 +168,13 @@ def get_connection_parameters(
                 context.check_hostname = True
                 context.verify_mode = ssl.CERT_REQUIRED
 
-            ssl_options = pika.SSLOptions(
-                context=context,
-                server_hostname=host
-            )
+            ssl_options = pika.SSLOptions(context=context, server_hostname=host)
             pika_parameters["ssl_options"] = ssl_options
 
         if pika_parameters["port"] is None and use_ssl:
             pika_parameters["port"] = 5671
         elif pika_parameters["port"] is None:
             pika_parameters["port"] = 5672
-
 
         if amqp_url.get("username", None):
             credentials = PlainCredentials(amqp_url["username"], amqp_url["password"])

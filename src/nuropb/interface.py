@@ -15,7 +15,7 @@ from typing import (
 
 logger = logging.getLogger(__name__)
 
-NUROPB_VERSION = "0.1.7"
+NUROPB_VERSION = "0.1.8"
 NUROPB_PROTOCOL_VERSION = "0.1.1"
 NUROPB_PROTOCOL_VERSIONS_SUPPORTED = ("0.1.1",)
 NUROPB_MESSAGE_TYPES = (
@@ -260,14 +260,15 @@ class NuropbTimeoutError(NuropbException):
 
 class NuropbTransportError(NuropbException):
     """NuropbTransportError: represents an error that inside the plumbing."""
+
     _close_connection: bool
 
     def __init__(
-            self,
-            description: Optional[str] = None,
-            payload: Optional[PayloadDict] = None,
-            exception: Optional[BaseException] = None,
-            close_connection: bool = False,
+        self,
+        description: Optional[str] = None,
+        payload: Optional[PayloadDict] = None,
+        exception: Optional[BaseException] = None,
+        close_connection: bool = False,
     ):
         super().__init__(
             description=description,
