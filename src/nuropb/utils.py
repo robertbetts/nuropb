@@ -8,18 +8,20 @@ def obfuscate_credentials(url_with_credentials: str | Dict[str, Any]) -> str:
     :return: str
     """
     if isinstance(url_with_credentials, dict):
-        port = url_with_credentials.pop("port", "")
+        port = url_with_credentials.get("port", "")
         if port:
             port = f":{port}"
         else:
             port = ""
+
         if url_with_credentials.get("use_ssl", False) or url_with_credentials.get(
             "cafile", None
         ):
             scheme = "amqps"
         else:
             scheme = "amqp"
-        return "{scheme}://{username}:@{host}{port}/{vhost}".format(scheme=scheme, port=port, **url_with_credentials)
+
+        return "{scheme}://{username}:@{host}{port}/{vhost}".format(scheme=scheme, **url_with_credentials)
 
     pattern = r"(:.*?@)"
     result = re.sub(
