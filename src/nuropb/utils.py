@@ -21,7 +21,9 @@ def obfuscate_credentials(url_with_credentials: str | Dict[str, Any]) -> str:
         else:
             scheme = "amqp"
 
-        return "{scheme}://{username}:@{host}{port}/{vhost}".format(scheme=scheme, **url_with_credentials)
+        return "{scheme}://{username}:@{host}{port}/{vhost}".format(
+            scheme=scheme, **url_with_credentials
+        )
 
     pattern = r"(:.*?@)"
     result = re.sub(

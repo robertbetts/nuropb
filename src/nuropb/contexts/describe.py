@@ -87,8 +87,7 @@ def publish_to_mesh(
 
 
 def describe_service(class_instance: object) -> Dict[str, Any] | None:
-    """Returns a description of the class methods that will be exposed to the service mesh
-    """
+    """Returns a description of the class methods that will be exposed to the service mesh"""
     service_info = {
         "service_name": "",
         "service_version": "",
@@ -186,18 +185,22 @@ def describe_service(class_instance: object) -> Dict[str, Any] | None:
             }
             methods.append((name, method_spec))
 
-        service_info.update({
-            "service_name": service_name,
-            "service_version": service_version,
-            "description": service_description,
-            "encrypted_methods": service_has_encrypted_methods,
-            "methods": dict(methods),
-        })
+        service_info.update(
+            {
+                "service_name": service_name,
+                "service_version": service_version,
+                "description": service_description,
+                "encrypted_methods": service_has_encrypted_methods,
+                "methods": dict(methods),
+            }
+        )
 
         if service_has_encrypted_methods:
             private_key = service_name = getattr(class_instance, "_private_key", None)
             if private_key is None:
-                service_info["warnings"].append("Service has encrypted methods but no private key has been set.")
+                service_info["warnings"].append(
+                    "Service has encrypted methods but no private key has been set."
+                )
                 logger.debug(
                     f"Service {service_name} has encrypted methods but no private key has been set"
                 )

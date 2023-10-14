@@ -252,15 +252,15 @@ class RMQAPI(NuropbInterface):
         """ The logic below is only relevant for incoming service messages
         """
         if self._service_instance is None:
-            error_description = (
-                f"No service instance configured to handle the {service_message['nuropb_type']} instruction"
-            )
+            error_description = f"No service instance configured to handle the {service_message['nuropb_type']} instruction"
             logger.warning(error_description)
             response = NuropbHandlingError(
                 description=error_description,
                 payload=service_message["nuropb_payload"],
             )
-            handle_execution_result(service_message, response, message_complete_callback)
+            handle_execution_result(
+                service_message, response, message_complete_callback
+            )
             return
 
         if service_message["nuropb_type"] in ("request", "command", "event"):
@@ -277,12 +277,11 @@ class RMQAPI(NuropbInterface):
 
     @classmethod
     def _handle_immediate_request_error(
-            cls,
-            rpc_response: bool,
-            payload: RequestPayloadDict | ResponsePayloadDict,
-            error: Dict[str, Any] | BaseException
+        cls,
+        rpc_response: bool,
+        payload: RequestPayloadDict | ResponsePayloadDict,
+        error: Dict[str, Any] | BaseException,
     ) -> ResponsePayloadDict:
-
         if rpc_response and isinstance(error, BaseException):
             raise error
         elif rpc_response:
@@ -388,7 +387,9 @@ class RMQAPI(NuropbInterface):
             return self._handle_immediate_request_error(rpc_response, message, err)
 
         if response["error"] is not None:
-            return self._handle_immediate_request_error(rpc_response, response, response["error"])
+            return self._handle_immediate_request_error(
+                rpc_response, response, response["error"]
+            )
         if rpc_response is True:
             return response["result"]
         else:
@@ -532,7 +533,9 @@ class RMQAPI(NuropbInterface):
                     )
                 return service_info
             except Exception as err:
-                raise ValueError(f"error loading the public key for {service_name}: {err}")
+                raise ValueError(
+                    f"error loading the public key for {service_name}: {err}"
+                )
 
     async def requires_encryption(self, service_name: str, method_name: str) -> bool:
         """requires_encryption: Queries the service discovery information for the service_name

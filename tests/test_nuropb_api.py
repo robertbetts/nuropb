@@ -7,12 +7,13 @@ import pytest
 
 IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 if IN_GITHUB_ACTIONS:
-    pytest.skip("Skipping model tests when run in Github Actions", allow_module_level=True)
+    pytest.skip(
+        "Skipping model tests when run in Github Actions", allow_module_level=True
+    )
 
 
 @pytest.mark.asyncio
 async def test_client_and_service_api_quick_setup(test_settings, rmq_settings):
-
     transport_settings = dict(
         dl_exchange=test_settings["dl_exchange"],
         prefetch_count=test_settings["prefetch_count"],
@@ -49,7 +50,6 @@ async def test_client_and_service_api_quick_setup(test_settings, rmq_settings):
 
 @pytest.mark.asyncio
 async def test_client_and_service_api_quick_setup_raw_defaults(rmq_settings):
-
     configure_mesh(
         connection_properties={
             "port": rmq_settings["port"],
@@ -61,13 +61,15 @@ async def test_client_and_service_api_quick_setup_raw_defaults(rmq_settings):
         connection_properties={
             "port": rmq_settings["port"],
             "host": rmq_settings["host"],
-        }
+        },
     )
     await service_api.connect()
-    client_api = create_client(connection_properties={
-        "port": rmq_settings["port"],
-        "host": rmq_settings["host"],
-    })
+    client_api = create_client(
+        connection_properties={
+            "port": rmq_settings["port"],
+            "host": rmq_settings["host"],
+        }
+    )
     await client_api.connect()
 
     await client_api.disconnect()

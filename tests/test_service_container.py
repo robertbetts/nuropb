@@ -11,7 +11,9 @@ logger = logging.getLogger()
 
 
 @pytest.mark.asyncio
-async def test_rmq_api_client_mode(test_settings, rmq_settings, test_api_url, etcd_config):
+async def test_rmq_api_client_mode(
+    test_settings, rmq_settings, test_api_url, etcd_config
+):
     instance_id = uuid4().hex
     transport_settings = dict(
         dl_exchange=test_settings["dl_exchange"],

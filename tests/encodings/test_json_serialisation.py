@@ -64,10 +64,9 @@ def generic_payload():
             "datetime": datetime.datetime(2020, 1, 1, 0, 0, 0),
             "set": {1, 2, Decimal(3)},
         },
-        "dataclass": Order(account="ABC1234",
-                           security="SSE.L",
-                           quantity=1000,
-                           side="sell")
+        "dataclass": Order(
+            account="ABC1234", security="SSE.L", quantity=1000, side="sell"
+        ),
     }
 
 

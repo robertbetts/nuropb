@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "nuropb"
-version = "0.1.7"
+version = "0.1.8"
 description = "NuroPb - A Distributed Event Driven Service Mesh"
 authors = ["Robert Betts <robert.betts@genoa.io>"]
 readme = "README.md"

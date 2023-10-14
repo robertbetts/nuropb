@@ -71,10 +71,10 @@ service_describe = service_api_spec = {
                         "description": "The date of the order",
                     },
                 },
-                "required": ["account", "security", "quantity", "side"]
-            }
+                "required": ["account", "security", "quantity", "side"],
+            },
         }
-    ]
+    ],
 }
 
 
@@ -102,6 +102,7 @@ class OrderManagementService:
     """
     Some useful documentation to describe the characteristic of the service and its purpose
     """
+
     _service_name = "oms_v2"
     _instance_id = uuid4().hex
     _version = "2.0.1"
@@ -112,13 +113,13 @@ class OrderManagementService:
     @nuropb_context
     @publish_to_mesh(requires_encryption=True)
     async def get_orders(
-            self,
-            ctx: NuropbContextManager,
-            order_date: datetime.datetime,
-            account: Optional[str] = None,
-            status: Optional[str] = "",
-            security: Optional[str] = None,
-            side: Optional[str] = None
+        self,
+        ctx: NuropbContextManager,
+        order_date: datetime.datetime,
+        account: Optional[str] = None,
+        status: Optional[str] = "",
+        security: Optional[str] = None,
+        side: Optional[str] = None,
     ) -> List[Order]:
         _ = order_date, account, status, security, side
         assert isinstance(self, OrderManagementService)
@@ -130,10 +131,9 @@ class OrderManagementService:
     async def create_order(self, ctx: NuropbContextManager) -> Order:
         assert isinstance(self, OrderManagementService)
         assert isinstance(ctx, NuropbContextManager)
-        new_order = Order(account="ABC1234",
-                          security="SSE.L",
-                          quantity=1000,
-                          side="sell")
+        new_order = Order(
+            account="ABC1234", security="SSE.L", quantity=1000, side="sell"
+        )
         return new_order
 
     @nuropb_context
@@ -149,8 +149,8 @@ class OrderManagementService:
 
 
 class Service:
-    """ Some useful documentation to describe the characteristic of the service and its purpose
-    """
+    """Some useful documentation to describe the characteristic of the service and its purpose"""
+
     service_name = "describe_service"
 
     def hello(self, _param1: str, param2: str = "value2") -> str:
@@ -159,13 +159,13 @@ class Service:
 
     @nuropb_context
     async def do_some_transaction(
-            self,
-            ctx: NuropbContextManager,
-            order_no: str,
-            order_date: datetime.datetime,
-            order_amount: float
+        self,
+        ctx: NuropbContextManager,
+        order_no: str,
+        order_date: datetime.datetime,
+        order_amount: float,
     ) -> str:
-        """ Some useful documentation for this method
+        """Some useful documentation for this method
 
         :param ctx:
         :param order_no:
@@ -188,4 +188,3 @@ def test_instance_describe():
     assert len(result["methods"]) == 3
     assert len(result["methods"]["create_order"]) == 3
     assert result["methods"]["get_orders"]["requires_encryption"] is True
-

@@ -9,20 +9,24 @@ from nuropb.testing.stubs import ServiceStub
 
 IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 if IN_GITHUB_ACTIONS:
-    pytest.skip("Skipping model tests when run in Github Actions", allow_module_level=True)
+    pytest.skip(
+        "Skipping model tests when run in Github Actions", allow_module_level=True
+    )
 
 
 @pytest.mark.asyncio
 async def test_tls_connect(rmq_settings, test_settings):
-
     def message_callback(message):
         print(message)
+
     amqp_url = rmq_settings.copy()
-    amqp_url.update({
-        "ssl": True,
-        "port": 5671,
-        "verify": False,
-    })
+    amqp_url.update(
+        {
+            "ssl": True,
+            "port": 5671,
+            "verify": False,
+        }
+    )
     transport_settings = dict(
         dl_exchange=test_settings["dl_exchange"],
         rpc_bindings=test_settings["rpc_bindings"],
@@ -41,6 +45,7 @@ async def test_tls_connect(rmq_settings, test_settings):
     )
     await transport1.start()
     from pika.adapters.utils.io_services_utils import _AsyncSSLTransport
+
     assert isinstance(transport1._connection._transport, _AsyncSSLTransport)
     assert transport1.connected is True
 
@@ -53,7 +58,7 @@ async def test_tls_connect(rmq_settings, test_settings):
         instance_id=service.instance_id,
         service_instance=service,
         amqp_url=amqp_url,
-        transport_settings=transport_settings
+        transport_settings=transport_settings,
     )
     await api.connect()
     assert api.connected is True
@@ -66,7 +71,6 @@ async def test_tls_connect(rmq_settings, test_settings):
 
 @pytest.mark.asyncio
 async def test_tls_connect_with_cafile(rmq_settings, test_settings):
-
     def message_callback(message):
         print(message)
 
@@ -75,13 +79,15 @@ async def test_tls_connect_with_cafile(rmq_settings, test_settings):
     keyfile = os.path.join(os.path.dirname(__file__), "key-2.pem")
 
     amqp_url = rmq_settings.copy()
-    amqp_url.update({
-        "cafile": cacertfile,
-        "port": 5671,
-        "verify": False,
-        "certfile": certfile,
-        "keyfile": keyfile,
-    })
+    amqp_url.update(
+        {
+            "cafile": cacertfile,
+            "port": 5671,
+            "verify": False,
+            "certfile": certfile,
+            "keyfile": keyfile,
+        }
+    )
     transport_settings = dict(
         dl_exchange=test_settings["dl_exchange"],
         rpc_bindings=test_settings["rpc_bindings"],
@@ -100,6 +106,7 @@ async def test_tls_connect_with_cafile(rmq_settings, test_settings):
     )
     await transport1.start()
     from pika.adapters.utils.io_services_utils import _AsyncSSLTransport
+
     assert isinstance(transport1._connection._transport, _AsyncSSLTransport)
     assert transport1.connected is True
 
@@ -112,7 +119,7 @@ async def test_tls_connect_with_cafile(rmq_settings, test_settings):
         instance_id=service.instance_id,
         service_instance=service,
         amqp_url=amqp_url,
-        transport_settings=transport_settings
+        transport_settings=transport_settings,
     )
     await api.connect()
     assert api.connected is True
@@ -121,6 +128,3 @@ async def test_tls_connect_with_cafile(rmq_settings, test_settings):
     assert transport1.connected is False
     await api.disconnect()
     assert api.connected is False
-
-
-

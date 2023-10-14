@@ -10,7 +10,6 @@ logger = logging.getLogger(__name__)
 
 @pytest.mark.asyncio
 async def test_requires_user_token(mesh_client, mesh_service):
-
     await mesh_service.connect()
     assert mesh_service.connected is True
     logger.info("SERVICE API CONNECTED")
@@ -45,7 +44,7 @@ async def test_requires_user_token(mesh_client, mesh_service):
 
 @pytest.mark.asyncio
 async def mesh_service_describe(mesh_client, mesh_service):
-    """ Call the describe function for a service on the mesh. This should return a dictionary
+    """Call the describe function for a service on the mesh. This should return a dictionary
     describing the service and its methods.
     """
 
@@ -74,7 +73,7 @@ async def mesh_service_describe(mesh_client, mesh_service):
 
 @pytest.mark.asyncio
 async def mesh_service_describe(mesh_client, mesh_service):
-    """ user the service mesh api helper function to call the describe function for a service on the mesh.
+    """user the service mesh api helper function to call the describe function for a service on the mesh.
     Test that service metta information is cached in the mesh client.
     """
 
@@ -97,8 +96,7 @@ async def mesh_service_describe(mesh_client, mesh_service):
     service = mesh_service.service_name
     method = "test_requires_encryption"
     public_key = await mesh_client.requires_encryption(
-        service_name=service,
-        method_name=method
+        service_name=service, method_name=method
     )
     params = {}
     context = {}
@@ -115,7 +113,7 @@ async def mesh_service_describe(mesh_client, mesh_service):
 
 @pytest.mark.asyncio(async_timeout=10)
 async def mesh_service_encrypt(mesh_client, mesh_service):
-    """ user the service mesh api helper function to call the describe function for a service on the mesh.
+    """user the service mesh api helper function to call the describe function for a service on the mesh.
     Test that service metta information is cached in the mesh client.
     """
 
@@ -130,9 +128,7 @@ async def mesh_service_encrypt(mesh_client, mesh_service):
     encrypted = await mesh_client.requires_encryption(service, method)
     assert encrypted is True
     params = {}
-    context = {
-        "Authorization": "Bearer: user_token"
-    }
+    context = {"Authorization": "Bearer: user_token"}
     rpc_response = await mesh_service.request(
         service=service,
         method=method,
@@ -142,4 +138,3 @@ async def mesh_service_encrypt(mesh_client, mesh_service):
         encrypted=encrypted,
     )
     logger.info(f"response: {pformat(rpc_response)}")
-
