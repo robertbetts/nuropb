@@ -61,6 +61,8 @@ def test_settings():
         "event_bindings": [],
         "prefetch_count": 1,
         "default_ttl": 60 * 30 * 1000,  # 30 minutes
+        "verify": False,
+        "ssl": False,
     }
     end_time = datetime.datetime.utcnow()
     logging.info(
@@ -76,23 +78,15 @@ def rmq_settings(test_settings):
     logging.debug("Setting up RabbitMQ test instance")
     vhost = f"pytest-{secrets.token_hex(8)}"
 
-    if IN_GITHUB_ACTIONS:
-        settings = dict(
-            host=test_settings["host"],
-            port=test_settings["port"],
-            username=test_settings["username"],
-            password=test_settings["password"],
-            vhost=vhost,
-        )
-    else:
-        settings = dict(
-            username="guest",
-            password="guest",
-            host="localhost",
-            port=5672,
-            vhost=vhost,
-            verify=False,
-        )
+    settings = dict(
+        host=test_settings["host"],
+        port=test_settings["port"],
+        username=test_settings["username"],
+        password=test_settings["password"],
+        vhost=vhost,
+        verify=test_settings["verify"],
+        ssl=test_settings["ssl"],
+    )
 
     api_url = build_rmq_api_url(
         scheme=test_settings["api_scheme"],
