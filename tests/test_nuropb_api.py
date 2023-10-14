@@ -1,6 +1,13 @@
+import os
+
 from nuropb.nuropb_api import create_service, create_client, configure_mesh
 
 import pytest
+
+
+IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
+if IN_GITHUB_ACTIONS:
+    pytest.skip("Skipping model tests when run in Github Actions", allow_module_level=True)
 
 
 @pytest.mark.asyncio
