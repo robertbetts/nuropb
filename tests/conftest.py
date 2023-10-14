@@ -19,6 +19,7 @@ from nuropb.rmq_transport import RMQTransport
 from nuropb.testing.stubs import IN_GITHUB_ACTIONS, ServiceExample
 
 logging.getLogger("pika").setLevel(logging.WARNING)
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture(scope="session")
@@ -31,6 +32,7 @@ def etcd_config():
             port=2379,
         )
 
+
 @pytest.fixture(scope="session")
 def test_settings():
     start_time = datetime.datetime.utcnow()
@@ -40,6 +42,7 @@ def test_settings():
         RMQ_AMQP_PORT: ${{ job.services.rabbitmq.ports['5672'] }}
         RMQ_API_PORT: ${{ job.services.rabbitmq.ports['15672'] }}
     """
+    logger.info(os.environ)
     api_port = os.environ.get("RMQ_API_PORT", 15672)
     amqp_port = os.environ.get("RMQ_AMQP_PORT", 5672)
 
@@ -47,7 +50,7 @@ def test_settings():
         "api_scheme": "http",
         "api_port": api_port,
         "port": amqp_port,
-        "host": "127.0.0.1",
+        "host": "localhost",
         "username": "guest",
         "password": "guest",
         "service_name": "test_service",
