@@ -200,7 +200,7 @@ class RMQTransport:
             - int prefetch_count: The number of messages to prefetch defaults to 1, unlimited is 0.
                     Experiment with larger values for higher throughput in your user case.
 
-            When an existing transport initialised and connected, and a subsequent transport
+            When an existing transport is initialised and connected, and a subsequent transport
             instance is connected with the same service_name and instance_id as the first, the broker
             will shut down the channel of subsequent instances when they attempt to configure their
             response queue. This is because the response queue is opened in exclusive mode. The
@@ -456,7 +456,7 @@ class RMQTransport:
         self._connected_future = asyncio.Future()
 
         connection_parameters = get_connection_parameters(
-            amqp_url = self._amqp_url,
+            amqp_url=self._amqp_url,
             name=self._service_name,
             instance_id=self._instance_id,
             client_only=self._client_only,

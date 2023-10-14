@@ -36,7 +36,7 @@ poetry = "^1.5.1"
 pytest = "^7.3.1"
 certifi = "^2023.7.22"
 coverage = {extras = ["toml"], version = "^7.2.7"}
-pytest-dotenv = "^0.5.2"
+pytest-dotenv = "0.5.2"
 black = "^23.3.0"
 mypy = "^1.4.1"
 pytest-asyncio = "^0.21.1"
@@ -67,10 +67,10 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.pytest]
-env_files = [".env_test"]
-testpaths = ["tests"]
 
 [tool.pytest.ini_options]
+env_files = [".env"]
+testpaths = ["tests"]
 asyncio_mode = "strict"
 log_cli = true
 log_level = "DEBUG"

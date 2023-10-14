@@ -5,10 +5,28 @@ import asyncio
 import pytest
 
 from nuropb.rmq_api import RMQAPI
+from nuropb.rmq_lib import rmq_api_url_from_amqp_url
 from nuropb.rmq_transport import RMQTransport
 from nuropb.testing.stubs import ServiceStub
 
 logger = logging.getLogger(__name__)
+
+
+def test_ampq_url_to_api_url():
+    api_url = rmq_api_url_from_amqp_url("amqp://guest:guest@localhost:5672/nuropb-example")
+    assert api_url == "http://guest:guest@localhost:15672/api"
+
+    api_url = rmq_api_url_from_amqp_url("amqp://guest@localhost:5672/nuropb-example")
+    assert api_url == "http://guest@localhost:15672/api"
+
+    api_url = rmq_api_url_from_amqp_url("amqp:///nuropb-example")
+    assert api_url == "http://localhost:15672/api"
+
+    api_url = rmq_api_url_from_amqp_url("amqps://guest:guest@localhost:5672/nuropb-example")
+    assert api_url == "https://guest:guest@localhost:15672/api"
+
+    api_url = rmq_api_url_from_amqp_url("amqps://guest:guest@localhost/nuropb-example")
+    assert api_url == "https://guest:guest@localhost:15671/api"
 
 
 @pytest.mark.asyncio
@@ -18,14 +36,7 @@ async def test_setting_connection_properties(rmq_settings, test_settings):
     constructor. The connection properties are used to set the properties of the AMQP connection
     that is established by the client.
     """
-    amqp_url = {
-        "host": "localhost",
-        "username": "guest",
-        "password": "guest",
-        "port": rmq_settings["port"],
-        "vhost": rmq_settings["vhost"],
-        "verify": False,
-    }
+    amqp_url = rmq_settings.copy()
     transport_settings = dict(
         dl_exchange=test_settings["dl_exchange"],
         rpc_bindings=test_settings["rpc_bindings"],
@@ -74,13 +85,7 @@ async def test_setting_connection_properties(rmq_settings, test_settings):
 async def test_single_instance_connection(rmq_settings, test_settings):
     """Test Single instance connections
     """
-    amqp_url = {
-        "host": "localhost",
-        "username": "guest",
-        "password": "guest",
-        "port": rmq_settings["port"],
-        "vhost": rmq_settings["vhost"],
-    }
+    amqp_url = rmq_settings.copy()
     transport_settings = dict(
         dl_exchange=test_settings["dl_exchange"],
         rpc_bindings=test_settings["rpc_bindings"],
@@ -129,13 +134,8 @@ async def test_single_instance_connection(rmq_settings, test_settings):
 @pytest.mark.asyncio
 async def test_bad_credentials(rmq_settings, test_settings):
 
-    amqp_url = {
-        "host": rmq_settings["host"],
-        "username": rmq_settings["username"],
-        "password": "bad_guest",
-        "port": rmq_settings["port"],
-        "vhost": rmq_settings["vhost"],
-    }
+    amqp_url = rmq_settings.copy()
+    amqp_url["username"] = "bad-username"
     transport_settings = dict(
         dl_exchange=test_settings["dl_exchange"],
         rpc_bindings=test_settings["rpc_bindings"],
@@ -165,13 +165,8 @@ async def test_bad_credentials(rmq_settings, test_settings):
 @pytest.mark.asyncio
 async def test_bad_vhost(rmq_settings, test_settings):
 
-    amqp_url = {
-        "host": rmq_settings["host"],
-        "username": rmq_settings["username"],
-        "password": rmq_settings["password"],
-        "port": rmq_settings["port"],
-        "vhost": "bad_vhost",
-    }
+    amqp_url = rmq_settings.copy()
+    amqp_url["vhost"] = "bad-vhost"
     transport_settings = dict(
         dl_exchange=test_settings["dl_exchange"],
         rpc_bindings=test_settings["rpc_bindings"],

@@ -19,6 +19,7 @@ from nuropb.rmq_transport import RMQTransport
 from nuropb.testing.stubs import IN_GITHUB_ACTIONS, ServiceExample
 
 logging.getLogger("pika").setLevel(logging.WARNING)
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture(scope="session")
@@ -31,6 +32,7 @@ def etcd_config():
             port=2379,
         )
 
+
 @pytest.fixture(scope="session")
 def test_settings():
     start_time = datetime.datetime.utcnow()
@@ -40,12 +42,14 @@ def test_settings():
         RMQ_AMQP_PORT: ${{ job.services.rabbitmq.ports['5672'] }}
         RMQ_API_PORT: ${{ job.services.rabbitmq.ports['15672'] }}
     """
-    api_port = os.environ.get("RMQ_API_PORT", 15672)
-    amqp_port = os.environ.get("RMQ_AMQP_PORT", 5672)
+    logger.info(os.environ)
+    api_port = os.environ.get("RMQ_API_PORT", "15672")
+    amqp_port = os.environ.get("RMQ_AMQP_PORT", "5672")
 
     yield {
         "api_scheme": "http",
         "api_port": api_port,
+        "scheme": "amqp",
         "port": amqp_port,
         "host": "127.0.0.1",
         "username": "guest",
@@ -58,6 +62,8 @@ def test_settings():
         "event_bindings": [],
         "prefetch_count": 1,
         "default_ttl": 60 * 30 * 1000,  # 30 minutes
+        "verify": False,
+        "ssl": False,
     }
     end_time = datetime.datetime.utcnow()
     logging.info(
@@ -73,23 +79,15 @@ def rmq_settings(test_settings):
     logging.debug("Setting up RabbitMQ test instance")
     vhost = f"pytest-{secrets.token_hex(8)}"
 
-    if IN_GITHUB_ACTIONS:
-        settings = dict(
-            host=test_settings["host"],
-            port=test_settings["port"],
-            username=test_settings["username"],
-            password=test_settings["password"],
-            vhost=vhost,
-        )
-    else:
-        settings = dict(
-            username="guest",
-            password="guest",
-            host="localhost",
-            port=5672,
-            vhost=vhost,
-            verify=False,
-        )
+    settings = dict(
+        host=test_settings["host"],
+        port=test_settings["port"],
+        username=test_settings["username"],
+        password=test_settings["password"],
+        vhost=vhost,
+        verify=test_settings["verify"],
+        ssl=test_settings["ssl"],
+    )
 
     api_url = build_rmq_api_url(
         scheme=test_settings["api_scheme"],
@@ -141,6 +139,7 @@ def test_rmq_url_static(test_settings):
         username=test_settings["username"],
         password=test_settings["password"],
         vhost=vhost,
+        scheme=test_settings["scheme"],
     )
     api_url = build_rmq_api_url(
         scheme=test_settings["api_scheme"],

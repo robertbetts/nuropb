@@ -18,19 +18,28 @@ logger = logging.getLogger(__name__)
 
 
 def build_amqp_url(
-    host: str, port: str | int, username: str, password: str, vhost: str
+    host: str, port: str | int, username: str, password: str, vhost: str, scheme: str = "amqp"
 ) -> str:
     """Creates an AMQP URL for connecting to RabbitMQ"""
-    return f"amqp://{username}:{password}@{host}:{port}/{vhost}"
+    if username:
+        password = f":{password}" if password.strip() else ""
+        return f"{scheme}://{username}{password}@{host}:{port}/{vhost}"
+    else:
+        return f"{scheme}://{host}:{port}/{vhost}"
 
 
 def build_rmq_api_url(
     scheme: str, host: str, port: str | int, username: str | None, password: str | None
 ) -> str:
     """Creates an HTTP URL for connecting to RabbitMQ management API"""
-    if username is None or password is None:
+    if username:
+        if password:
+            password = f":{password}"
+        else:
+            password = ""
+        return f"{scheme}://{username}{password}@{host}:{port}/api"
+    else:
         return f"{scheme}://{host}:{port}/api"
-    return f"{scheme}://{username}:{password}@{host}:{port}/api"
 
 
 def rmq_api_url_from_amqp_url(
@@ -43,11 +52,19 @@ def rmq_api_url_from_amqp_url(
     :return: the RabbitMQ management API URL
     """
     url_parts = urlparse(amqp_url)
+    scheme = scheme or url_parts.scheme
+    scheme = "https" if scheme == "amqps" else "http"
     username = url_parts.username
     password = url_parts.password
+    port = port or url_parts.port
     host = url_parts.hostname if url_parts.hostname else "localhost"
-    port = 15672 if port is None else port
-    scheme = "http" if scheme is None else scheme
+    if port:
+        port = int(port) + 10000
+    elif not port and scheme == "https":
+        port = 15671
+    elif not port:
+        port = 15672
+
     return build_rmq_api_url(scheme, host, port, username, password)
 
 
@@ -96,7 +113,7 @@ def get_connection_parameters(
     """
     if isinstance(amqp_url, dict):
         # create TLS connection parameters
-
+        use_ssl = amqp_url.get("ssl", False)
         host = amqp_url.get("host", None)
         port = amqp_url.get("port", None)
         pika_parameters = {
@@ -113,7 +130,10 @@ def get_connection_parameters(
         if vhost:
             pika_parameters["virtual_host"] = vhost
 
-        if amqp_url.get("cafile", None) or amqp_url.get("certfile"):
+        """ By specifying cafile, it is assumed that the connection will be over SSL/TLS
+        """
+        if use_ssl or amqp_url.get("cafile", None):
+            use_ssl = True
             cafile = amqp_url.get("cafile", None)
             if cafile:  # pragma: no cover
                 context = ssl.create_default_context(
@@ -144,6 +164,12 @@ def get_connection_parameters(
                 server_hostname=host
             )
             pika_parameters["ssl_options"] = ssl_options
+
+        if pika_parameters["port"] is None and use_ssl:
+            pika_parameters["port"] = 5671
+        elif pika_parameters["port"] is None:
+            pika_parameters["port"] = 5672
+
 
         if amqp_url.get("username", None):
             credentials = PlainCredentials(amqp_url["username"], amqp_url["password"])
