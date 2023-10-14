@@ -41,9 +41,11 @@ async def test_client_and_service_api_quick_setup(test_settings, rmq_settings):
 @pytest.mark.asyncio
 async def test_client_and_service_api_quick_setup_raw_defaults(rmq_settings):
 
-    configure_mesh(connection_properties={
-        "port": rmq_settings["port"],
-    })
+    configure_mesh(
+        connection_properties={
+            "port": rmq_settings["port"],
+        }
+    )
     service_api = create_service(
         name="test_service",
         connection_properties={
