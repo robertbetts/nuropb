@@ -18,14 +18,14 @@ logger = logging.getLogger(__name__)
 
 
 def build_amqp_url(
-    host: str, port: str | int, username: str, password: str, vhost: str
+    host: str, port: str | int, username: str, password: str, vhost: str, scheme: str = "amqp"
 ) -> str:
     """Creates an AMQP URL for connecting to RabbitMQ"""
     if username:
         password = f":{password}" if password.strip() else ""
-        return f"amqp://{username}{password}@{host}:{port}/{vhost}"
+        return f"{scheme}://{username}{password}@{host}:{port}/{vhost}"
     else:
-        return f"amqp://{host}:{port}/{vhost}"
+        return f"{scheme}://{host}:{port}/{vhost}"
 
 
 def build_rmq_api_url(
