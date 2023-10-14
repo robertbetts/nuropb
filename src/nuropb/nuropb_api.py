@@ -19,14 +19,17 @@ def default_connection_properties(connection_properties: Dict[str, Any]) -> Dict
         connection_properties["username"] = "guest"
     if "password" not in connection_properties:
         connection_properties["password"] = "guest"
-    if "port" not in connection_properties:
-        connection_properties["port"] = 5672
     if "vhost" not in connection_properties:
         connection_properties["vhost"] = "nuropb"
     if "verify" not in connection_properties:
         connection_properties["verify"] = False
     if "ssl" not in connection_properties:
         connection_properties["ssl"] = False
+    if "port" not in connection_properties and connection_properties["ssl"]:
+        connection_properties["port"] = 5671
+    elif "port" not in connection_properties:
+        connection_properties["port"] = 5672
+
     return connection_properties
 
 

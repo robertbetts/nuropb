@@ -20,6 +20,7 @@ def test_rmq_preparation(test_settings, rmq_settings, test_api_url):
     else:
         tmp_url = rmq_settings.copy()
         tmp_url["vhost"] = f"{rmq_settings['vhost']}-{secrets.token_hex(8)}"
+
     create_virtual_host(test_api_url, tmp_url)
     create_virtual_host(test_api_url, tmp_url)
     delete_virtual_host(test_api_url, tmp_url)

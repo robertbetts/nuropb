@@ -62,7 +62,7 @@ def rmq_api_url_from_amqp_url(
         port = int(port) + 10000
     elif not port and scheme == "https":
         port = 15671
-    else:
+    elif not port:
         port = 15672
 
     return build_rmq_api_url(scheme, host, port, username, password)

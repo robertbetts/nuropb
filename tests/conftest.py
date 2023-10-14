@@ -43,13 +43,13 @@ def test_settings():
         RMQ_API_PORT: ${{ job.services.rabbitmq.ports['15672'] }}
     """
     logger.info(os.environ)
-    api_port = os.environ.get("RMQ_API_PORT", 15672)
-    amqp_port = os.environ.get("RMQ_AMQP_PORT", 5672)
+    api_port = os.environ.get("RMQ_API_PORT", "15672")
+    amqp_port = os.environ.get("RMQ_AMQP_PORT", "5672")
 
     yield {
-        "scheme": "amqp",
         "api_scheme": "http",
         "api_port": api_port,
+        "scheme": "amqp",
         "port": amqp_port,
         "host": "localhost",
         "username": "guest",
