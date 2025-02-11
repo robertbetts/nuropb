@@ -1,4 +1,5 @@
 import os
+from typing import Dict, Any
 
 from nuropb.nuropb_api import create_service, create_client, configure_mesh
 
@@ -13,13 +14,13 @@ if IN_GITHUB_ACTIONS:
 
 
 @pytest.mark.asyncio
-async def test_client_and_service_api_quick_setup(test_settings, rmq_settings):
+async def test_client_and_service_api_quick_setup(test_settings: Dict[str, Any], rmq_settings: Dict[str, Any]):
     transport_settings = dict(
         dl_exchange=test_settings["dl_exchange"],
         prefetch_count=test_settings["prefetch_count"],
         default_ttl=test_settings["default_ttl"],
     )
-    connection_properties = rmq_settings
+    connection_properties: Dict[str, Any] = rmq_settings
 
     configure_mesh(
         mesh_name=connection_properties["vhost"],
@@ -49,7 +50,7 @@ async def test_client_and_service_api_quick_setup(test_settings, rmq_settings):
 
 
 @pytest.mark.asyncio
-async def test_client_and_service_api_quick_setup_raw_defaults(rmq_settings):
+async def test_client_and_service_api_quick_setup_raw_defaults(rmq_settings: Dict[str, Any]):
     configure_mesh(
         connection_properties={
             "port": rmq_settings["port"],

@@ -73,7 +73,7 @@ def error_dict_from_exception(exception: Exception | BaseException) -> Dict[str,
         "description": description,
     }
 
-
+# TODO: Consider moving this to the rmq_lib.py module
 def create_transport_response_from_rmq_decode_exception(
     exception: Exception | BaseException,
     basic_deliver: pika.spec.Basic.Deliver,
@@ -121,12 +121,20 @@ def create_transport_responses_from_exceptions(
     :param exception:
     :return:
     """
+    if service_message.get("nuropb_type"):
+        nuropb_type = service_message.get("nuropb_type")
+        payload = service_message["nuropb_payload"]
+    else:
+        nuropb_type = service_message.get("tag")
+        payload = service_message    
+    
     acknowledgement: AcknowledgeAction = "reject"
     transport_responses: List[TransportRespondPayload] = []
-    service_context = service_message["nuropb_payload"]["context"]
-    service_type: NuropbMessageType = service_message["nuropb_type"]
-    correlation_id = service_message["correlation_id"]
-    trace_id = service_message["trace_id"]
+    service_context = payload["context"]
+    service_type: NuropbMessageType = nuropb_type
+    correlation_id = payload["correlation_id"]
+    # FIXME: trace_id is not always present in the payload, check this out
+    trace_id = service_message.get("trace_id")
 
     response_template = ResponsePayloadDict(
         tag="response",
@@ -271,6 +279,13 @@ def handle_execution_result(
     acknowledgement: AcknowledgeAction = "ack"
     responses = []
 
+    if service_message.get("nuropb_type"):
+        nuropb_type = service_message.get("nuropb_type")
+        payload = service_message["nuropb_payload"]
+    else:
+        nuropb_type = service_message.get("tag")
+        payload = service_message    
+
     # If this a Future, should it be checked that it's done, or probably has it already?
     if asyncio.isfuture(result):
         error = result.exception()
@@ -292,19 +307,19 @@ def handle_execution_result(
         ) = create_transport_responses_from_exceptions(
             service_message=service_message, exception=result
         )
-        if service_message["nuropb_type"] == "request":
+        if nuropb_type == "request":
             responses.extend(transport_response)
         if verbose:
             logger.exception(result)
 
-    if service_message["nuropb_type"] in ("event", "command"):
+    if nuropb_type in ("event", "command"):
         """There is no requirement to handle the response of instance._event_handler result, only to
         positively acknowledge the event. There is also no requirements to handle the response of
         a command, only to positively acknowledge the command.
         """
         pass  # Do nothing
 
-    if service_message["nuropb_type"] == "request":
+    if nuropb_type == "request":
         """Create NuroPb response from the service call result"""
         if isinstance(error, BaseException):
             pyload_error = error_dict_from_exception(error)
@@ -317,17 +332,17 @@ def handle_execution_result(
             tag="response",
             result=result,
             error=pyload_error,
-            correlation_id=service_message["correlation_id"],
-            trace_id=service_message["trace_id"],
-            context=service_message["nuropb_payload"]["context"],
+            correlation_id=payload["correlation_id"],
+            trace_id=service_message.get("trace_id"),
+            context=payload["context"],
             warning=None,
             reply_to="",
         )
         responses.append(
             TransportRespondPayload(
                 nuropb_protocol=NUROPB_PROTOCOL_VERSION,
-                correlation_id=service_message["correlation_id"],
-                trace_id=service_message["trace_id"],
+                correlation_id=payload["correlation_id"],
+                trace_id=service_message.get("trace_id"),
                 ttl=None,
                 nuropb_type="response",
                 nuropb_payload=payload,
@@ -352,12 +367,18 @@ def execute_request(
     :param message_complete_callback: MessageCompleteFunction
     :return: None
     """
-
-    if service_message["nuropb_type"] not in ("request", "command", "event"):
+    if service_message.get("nuropb_type"):
+        nuropb_type = service_message.get("nuropb_type")
+        payload = service_message["nuropb_payload"]
+    else:
+        nuropb_type = service_message.get("tag")
+        payload = service_message
+        
+    if nuropb_type not in ("request", "command", "event"):
         description = f"Service execution not support for message type {service_message['nuropb_type']}"
         err = NuropbHandlingError(
             description=description,
-            payload=service_message["nuropb_payload"],
+            payload=payload,
             exception=None,
         )
         handle_execution_result(service_message, err, message_complete_callback)
@@ -365,10 +386,8 @@ def execute_request(
 
     result = None
     try:
-        payload = service_message["nuropb_payload"]
 
-        if service_message["nuropb_type"] == "event":
-            payload = service_message["nuropb_payload"]
+        if nuropb_type == "event":
             topic = payload["topic"]
             event = payload["event"]
             target = payload["target"]
@@ -387,7 +406,6 @@ def execute_request(
 
         # By inference service_message["nuropb_type"] in ("request", "command")
 
-        payload = service_message["nuropb_payload"]
         service_name = payload["service"]
         method_name = payload["method"]
         params = payload["params"]
@@ -414,7 +432,7 @@ def execute_request(
                 service_instance_method = getattr(service_instance, method_name)
                 if method_requires_nuropb_context(service_instance_method):
                     result = service_instance_method(
-                        service_message["nuropb_payload"]["context"], **params
+                        payload["context"], **params
                     )
                 else:
                     result = getattr(service_instance, method_name)(**params)

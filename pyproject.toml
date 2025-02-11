@@ -30,6 +30,7 @@ requests = {extras = ["security"], version = "^2.31.0"}
 types-requests = "^2.31.0.2"
 tornado = "^6.3.3"
 etcd3-py = { version = "^0.1.6",  optional = true }
+redis = "^5.2.1"
 
 [tool.poetry.group.dev.dependencies]
 poetry = "^1.5.1"

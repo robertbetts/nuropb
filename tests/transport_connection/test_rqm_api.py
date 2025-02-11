@@ -2,6 +2,7 @@ import pytest
 from uuid import uuid4
 import secrets
 import logging
+from typing import Dict, Any
 
 from nuropb.rmq_api import RMQAPI
 from nuropb.rmq_lib import create_virtual_host, delete_virtual_host
@@ -10,7 +11,7 @@ logging.getLogger("pika").setLevel(logging.WARNING)
 logger = logging.getLogger()
 
 
-def test_rmq_preparation(test_settings, rmq_settings, test_api_url):
+def test_rmq_preparation(test_settings, rmq_settings: Dict[str, Any], test_api_url):
     """Test that the RMQ instance is and can be correctly configured
     - create virtual host must be idempotent
     - delete virtual host must be idempotent
@@ -18,7 +19,7 @@ def test_rmq_preparation(test_settings, rmq_settings, test_api_url):
     if isinstance(rmq_settings, str):
         tmp_url = f"{rmq_settings}-{secrets.token_hex(8)}"
     else:
-        tmp_url = rmq_settings.copy()
+        tmp_url: Dict[str, Any] = rmq_settings.copy()
         tmp_url["vhost"] = f"{rmq_settings['vhost']}-{secrets.token_hex(8)}"
 
     create_virtual_host(test_api_url, tmp_url)
@@ -28,7 +29,7 @@ def test_rmq_preparation(test_settings, rmq_settings, test_api_url):
 
 
 @pytest.mark.asyncio
-async def test_instantiate_api(test_settings, rmq_settings):
+async def test_instantiate_api(test_settings, rmq_settings: Dict[str, Any]):
     """Test that the RMQAPI instance can be instantiated"""
     if isinstance(rmq_settings, str):
         with pytest.raises(ValueError):
@@ -38,7 +39,7 @@ async def test_instantiate_api(test_settings, rmq_settings):
             )
     else:
         with pytest.raises(AttributeError):
-            test_url = "/".join(rmq_settings.split("/")[:-1])
+            test_url = "/".join(rmq_settings.split("/")[:-1])  # type: ignore
             rmq_api = RMQAPI(
                 amqp_url=test_url,
             )
@@ -54,7 +55,7 @@ async def test_instantiate_api(test_settings, rmq_settings):
 
 
 @pytest.mark.asyncio
-async def test_rmq_api_client_mode(test_settings, rmq_settings):
+async def test_rmq_api_client_mode(test_settings: Dict[str, Any], rmq_settings):
     """Test client mode. this is a client only instance of RMQAPI and only established a connection
     to the RMQ server. It registers a response queue that is automatically associated with the default
     exchange, requires that RMQ is sufficiently setup.
@@ -84,7 +85,7 @@ async def test_rmq_api_client_mode(test_settings, rmq_settings):
 
 
 @pytest.mark.asyncio
-async def test_rmq_api_service_mode(test_settings, rmq_settings, service_instance):
+async def test_rmq_api_service_mode(test_settings: Dict[str, Any], rmq_settings, service_instance):
     service_name = test_settings["service_name"]
     instance_id = uuid4().hex
     transport_settings = dict(

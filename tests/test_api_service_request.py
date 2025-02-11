@@ -1,6 +1,7 @@
 import pytest
 from uuid import uuid4
 import logging
+from typing import Dict, Any
 
 from nuropb.interface import NuropbException, NuropbMessageError, NuropbCallAgainReject
 from nuropb.rmq_api import RMQAPI
@@ -10,7 +11,7 @@ logger = logging.getLogger()
 
 
 @pytest.mark.asyncio
-async def test_request_response_fail(test_settings, rmq_settings, service_instance):
+async def test_request_response_fail(test_settings: Dict[str, Any], rmq_settings, service_instance):
     service_name = test_settings["service_name"]
     instance_id = uuid4().hex
     transport_settings = dict(
@@ -86,7 +87,7 @@ async def test_request_response_fail(test_settings, rmq_settings, service_instan
 
 
 @pytest.mark.asyncio
-async def test_request_response_pass(test_settings, rmq_settings, service_instance):
+async def test_request_response_pass(test_settings: Dict[str, Any], rmq_settings, service_instance):
     service_name = test_settings["service_name"]
     instance_id = uuid4().hex
     transport_settings = dict(
@@ -150,7 +151,7 @@ async def test_request_response_pass(test_settings, rmq_settings, service_instan
 
 
 @pytest.mark.asyncio
-async def test_request_response_success(test_settings, rmq_settings, service_instance):
+async def test_request_response_success(test_settings: Dict[str, Any], rmq_settings, service_instance):
     service_name = test_settings["service_name"]
     instance_id = uuid4().hex
     transport_settings = dict(
@@ -215,7 +216,7 @@ async def test_request_response_success(test_settings, rmq_settings, service_ins
 
 @pytest.mark.asyncio
 async def test_request_response_call_again(
-    test_settings, rmq_settings, service_instance
+    test_settings: Dict[str, Any], rmq_settings, service_instance
 ):
     service_name = test_settings["service_name"]
     instance_id = uuid4().hex
@@ -281,7 +282,7 @@ async def test_request_response_call_again(
 
 @pytest.mark.asyncio
 async def test_request_response_call_again_loop_fail(
-    test_settings, rmq_settings, service_instance
+    test_settings: Dict[str, Any], rmq_settings, service_instance
 ):
     service_name = test_settings["service_name"]
     instance_id = uuid4().hex

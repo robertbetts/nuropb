@@ -165,6 +165,8 @@ class TransportServicePayload(TypedDict):
     ttl: Optional[int]  # time to live in milliseconds
     nuropb_type: NuropbMessageType
     nuropb_payload: Dict[str, Any]  # ServicePayloadTypes
+    encrypted: Optional[bool]  # True if the payload is encrypted
+    reply_to: Optional[str]  # the destination for the response
 
 
 class TransportRespondPayload(TypedDict):

@@ -97,6 +97,7 @@ def decode_rmq_body(
     _ = method  # Future placeholder
     service_message: TransportServicePayload = {
         "nuropb_protocol": properties.headers.get("nuropb_protocol"),
+        "nuropb_version": properties.headers.get("nuropb_version"),
         "nuropb_type": properties.headers.get("nuropb_type"),
         "nuropb_payload": {},
         "correlation_id": properties.correlation_id,
@@ -352,7 +353,7 @@ class RMQTransport:
         amqp_url: Optional[str | Dict[str, Any]] = None,
         rmq_api_url: Optional[str] = None,
     ) -> None:
-        """configure_rabbitmq: configure the RabbitMQ transport with the provided configuration
+        """Configure the RabbitMQ transport with the provided configuration
 
         if rmq_configuration is None, then the transport will be configured with the configuration
         provided during the transport's __init__().
@@ -683,8 +684,12 @@ class RMQTransport:
 
         elif not isinstance(reason, ChannelClosedByClient):
             """Log the reason for the channel close and allow the re-open process to continue"""
+            if hasattr(reason, "reply_code"):
+                reply_code = reason.reply_code
+            else:
+                reply_code = f"{type(reason)} - {str(reason)}"
             reason_description = (
-                f"RabbitMQ channel closed ({reason.reply_code})."
+                f"RabbitMQ channel closed ({reply_code})."
                 f"{type(reason).__name__}: {reason}"
             )
             logger.warning(reason_description)

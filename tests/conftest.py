@@ -3,6 +3,7 @@ import datetime
 import secrets
 from uuid import uuid4
 import os
+from typing import Dict, Any
 
 import pytest
 import pytest_asyncio
@@ -42,7 +43,7 @@ def test_settings():
         RMQ_AMQP_PORT: ${{ job.services.rabbitmq.ports['5672'] }}
         RMQ_API_PORT: ${{ job.services.rabbitmq.ports['15672'] }}
     """
-    logger.info(os.environ)
+    # logger.info(os.environ)
     api_port = os.environ.get("RMQ_API_PORT", "15672")
     amqp_port = os.environ.get("RMQ_AMQP_PORT", "5672")
 
@@ -75,7 +76,7 @@ def test_settings():
 
 
 @pytest.fixture(scope="session")
-def rmq_settings(test_settings):
+def rmq_settings(test_settings: Dict[str, Any]):
     logging.debug("Setting up RabbitMQ test instance")
     vhost = f"pytest-{secrets.token_hex(8)}"
 
@@ -130,7 +131,7 @@ def rmq_settings(test_settings):
 
 
 @pytest.fixture(scope="session")
-def test_rmq_url_static(test_settings):
+def test_rmq_url_static(test_settings: Dict[str, Any]):
     logging.debug("Setting up RabbitMQ test instance")
     vhost = f"pytest-vhost"
     rmq_url = build_amqp_url(
@@ -182,7 +183,7 @@ def test_rmq_url_static(test_settings):
 
 
 @pytest.fixture(scope="session")
-def test_api_url(test_settings):
+def test_api_url(test_settings: Dict[str, Any]):
     rmq_url = build_rmq_api_url(
         scheme=test_settings["api_scheme"],
         host=test_settings["host"],
@@ -202,7 +203,7 @@ def service_instance():
 
 
 @pytest_asyncio.fixture(scope="function")
-async def mesh_service(test_settings, rmq_settings, service_instance):
+async def mesh_service(test_settings: Dict[str, Any], rmq_settings, service_instance):
     service_name = test_settings["service_name"]
     instance_id = uuid4().hex
     transport_settings = dict(
@@ -227,9 +228,9 @@ async def mesh_service(test_settings, rmq_settings, service_instance):
 
 
 @pytest_asyncio.fixture(scope="function")
-async def mesh_client(rmq_settings, test_settings, mesh_service):
+async def mesh_client(rmq_settings, test_settings: Dict[str, Any], mesh_service):
     instance_id = uuid4().hex
-    settings = mesh_service.transport.rmq_configuration
+    settings: Dict[str, Any] = mesh_service.transport.rmq_configuration
     client_transport_settings = dict(
         dl_exchange=settings["dl_exchange"],
         prefetch_count=test_settings["prefetch_count"],

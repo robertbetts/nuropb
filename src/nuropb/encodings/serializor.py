@@ -43,7 +43,7 @@ def encode_payload(
 
 
 def decode_payload(
-    encoded_payload: bytes,
+    encoded_payload: bytes | str,
     payload_type: str = "json",
 ) -> PayloadDict:
     """
@@ -54,9 +54,12 @@ def decode_payload(
     if payload_type != "json":
         raise ValueError(f"payload_type {payload_type} is not supported")
 
+    if isinstance(encode_payload, bytes):
+        encoded_payload = encoded_payload.decode()
+
     payload = get_serializor(
         payload_type=payload_type,
-    ).decode(encoded_payload.decode())
+    ).decode(encoded_payload)
     if not isinstance(payload, dict):
         raise ValueError(
             f"Decoded payload is not a dictionary: {type(payload).__name__}"

@@ -1,6 +1,7 @@
 import pytest
 from uuid import uuid4
 import logging
+from typing import Dict, Any
 
 from nuropb.interface import NuropbMessageError, NuropbCallAgainReject
 from nuropb.rmq_api import RMQAPI
@@ -10,7 +11,7 @@ logger = logging.getLogger()
 
 
 @pytest.mark.asyncio
-async def test_request_response_pass(test_settings, rmq_settings, service_instance):
+async def test_request_response_pass(test_settings: Dict[str, Any], rmq_settings, service_instance):
     instance_id = uuid4().hex
     client_transport_settings = dict(
         dl_exchange=test_settings["dl_exchange"],
