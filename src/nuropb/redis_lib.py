@@ -108,7 +108,6 @@ def create_transport_response_from_redis_decode_exception(
             nuropb_protocol=NUROPB_PROTOCOL_VERSION,
             correlation_id=correlation_id,
             trace_id=trace_id,
-            ttl=None,
             nuropb_type="response",
             nuropb_payload=response,
         )

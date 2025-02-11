@@ -45,7 +45,6 @@ class RedisAPI(NuropbInterface):
     _connection_name: str
     _response_futures: Dict[str, ResultFutureResponsePayload]
     _transport: RedisTransport
-    _default_ttl: int
     _client_only: bool
     _encryptor: Encryptor
     _service_discovery: Dict[str, Any]
@@ -65,22 +64,19 @@ class RedisAPI(NuropbInterface):
         self._mesh_name = database
 
         """ If a service_name is not provided, then the service is a client only and will not be able 
-        to register for messages on service exchanges: rpc and events.
+        to register for messages on a service queue.
         """
         self._instance_id = instance_id if instance_id is not None else uuid4().hex
 
         if service_name is None:
             """Configure for client only mode"""
             self._client_only = True
-            # self._connection_name = f"{vhost}-client-{instance_id}"
-            # service_name = f"{vhost}-client"
             self._connection_name = f"client-{instance_id}"
             service_name = f"client"
             self._encryptor = Encryptor()
         else:
             """Configure for service mode"""
             self._client_only = False
-            # self._connection_name = f"{vhost}-{service_name}-{instance_id}"
             self._connection_name = f"{service_name}-{instance_id}"
             self._encryptor = Encryptor(
                 service_name=service_name,
@@ -111,12 +107,6 @@ class RedisAPI(NuropbInterface):
             transport_settings["client_only"] = True
 
         self._response_futures = {}
-
-        default_ttl = transport_settings.get("default_ttl", None)
-        self._default_ttl = 60 * 60 * 1000 if default_ttl is None else default_ttl
-        """ default time to live or timeout service mesh interaction
-        """
-
         self._api_connected = False
 
         if not self._client_only and self._service_instance is None:
@@ -292,7 +282,6 @@ class RedisAPI(NuropbInterface):
         method: str,
         params: Dict[str, Any],
         context: Dict[str, Any],
-        ttl: Optional[int] = None,
         trace_id: Optional[str] = None,
         rpc_response: bool = True,
         encrypted: bool = False,
@@ -311,9 +300,6 @@ class RedisAPI(NuropbInterface):
                                        # request or trace the request over the network (e.g. uuid4 hex string)
                 - service: str
                 - method: str
-        :param ttl: int optional
-            expiry is the time in milliseconds that the message will be kept on the queue before being moved
-            to the dead letter queue. If None, then the message expiry configured on the transport is used.
         :param trace_id: str optional
             an identifier to trace the request over the network (e.g. uuid4 hex string)
         :param rpc_response: bool optional
@@ -326,7 +312,6 @@ class RedisAPI(NuropbInterface):
             exceptions raised
         """
         correlation_id = uuid4().hex
-        ttl = self._default_ttl if ttl is None else ttl
         
         response_future: ResultFutureResponsePayload = Future()
         self._response_futures[correlation_id] = response_future
@@ -351,8 +336,6 @@ class RedisAPI(NuropbInterface):
         try:
             await self._transport.send_message(
                 payload=message,
-                expiry=ttl,
-                priority=None,
                 encoding="json",
                 encrypted=encrypted,
             )
@@ -379,7 +362,6 @@ class RedisAPI(NuropbInterface):
         method: str,
         params: Dict[str, Any],
         context: Dict[str, Any],
-        ttl: Optional[int] = None,
         trace_id: Optional[str] = None,
         encrypted: bool = False,
     ) -> None:
@@ -391,16 +373,11 @@ class RedisAPI(NuropbInterface):
         :param params: the method arguments, these must be easily serializable to JSON
         :param context: additional information that represent the context in which the request is executed.
                         The must be easily serializable to JSON.
-        :param ttl: the time to live of the request in milliseconds. After this time and dependent on the
-                    underlying transport, it will not be consumed by the target
-                    or
-                    assumed by the requester to have failed with an undetermined state.
         :param trace_id: an identifier to trace the request over the network (e.g. uuid4 hex string)
         :param encrypted: bool, if True then the message will be encrypted in transit
         :return: None
         """
         correlation_id = uuid4().hex
-        ttl = self._default_ttl if ttl is None else ttl
         message: CommandPayloadDict = {
             "tag": "command",
             "service": service,
@@ -422,8 +399,6 @@ class RedisAPI(NuropbInterface):
         try:
             await self._transport.send_message(
                 payload=message,
-                expiry=ttl,
-                priority=None,
                 encoding="json",
                 encrypted=encrypted,
             )
@@ -471,7 +446,6 @@ class RedisAPI(NuropbInterface):
         try:
             await self._transport.send_message(
                 payload=message,
-                priority=None,
                 encoding="json",
                 encrypted=encrypted,
             )
@@ -496,7 +470,6 @@ class RedisAPI(NuropbInterface):
             method="nuropb_describe",
             params={},
             context={},
-            ttl=60 * 1000,  # 1 minute
             trace_id=uuid4().hex,
         )
         if not isinstance(service_info, dict):

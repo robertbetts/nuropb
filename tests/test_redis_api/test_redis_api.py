@@ -81,7 +81,6 @@ async def test_redis_api_client_mode(test_redis_settings: Dict[str, Any], redis_
     instance_id = uuid4().hex
     transport_settings = dict(
         prefetch_count=test_redis_settings["prefetch_count"],
-        default_ttl=test_redis_settings["default_ttl"],
     )
     redis_api = RedisAPI(
         instance_id=instance_id,
@@ -101,7 +100,6 @@ async def test_redis_api_service_mode(test_redis_settings: Dict[str, Any], redis
     instance_id = uuid4().hex
     transport_settings = dict(
         prefetch_count=test_redis_settings["prefetch_count"],
-        default_ttl=test_redis_settings["default_ttl"],
     )
     redis_api = RedisAPI(
         service_name=service_name,

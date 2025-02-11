@@ -41,7 +41,6 @@ def test_redis_settings():
         "rpc_bindings": ["test_service"],
         "event_bindings": [],
         "prefetch_count": 1,
-        "default_ttl": 60 * 30 * 1000,  # 30 minutes
         "verify": False,
         "ssl": False,
     }
@@ -79,7 +78,6 @@ def redis_settings(test_redis_settings: Dict[str, Any]):
         url=settings,
         database=database,
         prefetch_count=test_redis_settings["prefetch_count"],
-        default_ttl=test_redis_settings["default_ttl"],
         message_callback=message_callback,
     )
     transport = RedisTransport(**transport_settings)
@@ -126,7 +124,6 @@ def test_redis_url_static(test_redis_settings: Dict[str, Any]):
         rpc_bindings=[test_redis_settings["service_name"]],
         event_bindings=[],
         prefetch_count=test_redis_settings["prefetch_count"],
-        default_ttl=test_redis_settings["default_ttl"],
         message_callback=message_callback,
     )
     transport = RedisTransport(**transport_settings)

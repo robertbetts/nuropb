@@ -34,7 +34,6 @@ class RedisConfiguration(TypedDict):
     dl_queue: str
     service_queue: str
     response_queue: str
-    default_ttl: int
     client_only: bool
     
     
@@ -67,7 +66,6 @@ def decode_redis_body(body: bytes) -> TransportServicePayload:
         "nuropb_payload": {},
         "correlation_id": json_message["headers"].get("correlation_id"),
         "trace_id": json_message["headers"].get("trace_id"),
-        "ttl": json_message["headers"].get("expiration"),
         "encrypted": json_message["headers"].get("encrypted"),
         "reply_to": json_message["headers"].get("reply_to"),
     }
@@ -103,7 +101,6 @@ class RedisTransport:
         instance_id: str,
         url: str | Dict[str, Any],
         message_callback: MessageCallbackFunction,
-        default_ttl: Optional[int] = None,
         client_only: Optional[bool] = None,
         encryptor: Optional[Encryptor] = None,
         **kwargs: Any,
@@ -138,7 +135,6 @@ class RedisTransport:
             kwargs.get("response_queue", None)
             or f"nuropb-{self._service_name}-{self._instance_id}-rq"
         )
-        self._default_ttl = default_ttl or 60 * 60 * 1000 * 12  # 12 hours
         self._message_callback = message_callback
 
         self._is_leader = True
@@ -196,7 +192,6 @@ class RedisTransport:
             "dl_queue": self._dl_queue,
             "service_queue": self._service_queue,
             "response_queue": self._response_queue,
-            "default_ttl": self._default_ttl,
             "client_only": self._client_only,
         }
         
@@ -222,16 +217,12 @@ class RedisTransport:
     async def send_message(
         self,
         payload: Dict[str, Any],
-        expiry: Optional[int] = None,
-        priority: Optional[int] = None,
         encoding: str | None = None,
         encrypted: bool = False,
     ) -> None:
         """Send a message to over Redis
 
         :param Dict[str, Any] payload: The message contents
-        :param expiry: The message expiry in milliseconds
-        :param priority: The message priority
         :param encoding: The encoding of the message
         :param encrypted: True if the message is to be encrypted
         """
@@ -288,11 +279,6 @@ class RedisTransport:
             payload = wire_body.decode()
         )
         
-        if expiry:
-            message["headers"]["expiration"] = expiry
-        if priority:
-            message["headers"]["priority"] = priority
-
         try:
             await self._connection.lpush(routing_key, json.dumps(message))
         except Exception as err:
@@ -429,7 +415,6 @@ class RedisTransport:
                 try:
                     await self.send_message(
                         payload=respond_payload,
-                        priority=None,
                         encoding="json",
                         encrypted=encrypted,
                     )

@@ -17,7 +17,6 @@ async def test_request_response_pass(test_redis_settings: Dict[str, Any], redis_
     instance_id = uuid4().hex
     client_transport_settings = dict(
         prefetch_count=test_redis_settings["prefetch_count"],
-        default_ttl=test_redis_settings["default_ttl"],
     )
     client_api = RedisAPI(
         instance_id=instance_id,
@@ -32,7 +31,6 @@ async def test_request_response_pass(test_redis_settings: Dict[str, Any], redis_
     method = "test_method"
     params = {"param1": "value1"}
     context = {"context1": "value1"}
-    ttl = 60 * 5 * 1000
     trace_id = uuid4().hex
     logging.info(f"Requesting {service}.{method}")
 
@@ -57,7 +55,6 @@ async def test_request_response_pass(test_redis_settings: Dict[str, Any], redis_
         method=method,
         params=params,
         context=context,
-        ttl=ttl,
         trace_id=trace_id,
     ))
     logger.info("Request task created")
